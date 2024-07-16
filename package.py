@@ -335,6 +335,7 @@ proteinConcentration_nM_List_NP = np.array(proteinConcentration_nM_List) # Impor
 subset_indices = np.linspace(0, length - 1, length, dtype=int) # Define indices: 0, 10, 20, 30, ..
 subset_ProteinConcentration_nM_List = proteinConcentration_nM_List_NP[subset_indices] # Access the values locates in these indices
 
+
 # Calculate the [R_p D] complex using the equation in the paper's supplementary information. 
 def calculate_RpD(R_p, D, K_TX): # Accept parameters to calculate the [R_p D] complex
     discriminant = (R_p + D + K_TX)**2 - 4 * R_p * D
@@ -351,7 +352,7 @@ def dPdt(T, P, Q, S, tau_0, tau_f, k3, k11): # Not only accept the variables T a
         return 0 
 
 def solve_ODE(params):
-
+    global subset_ProteinConcentration_nM_List
     k_TL, k_TX, R_p, tau_m, K_TL, R, k_deg, X_p, K_p, tau_0, tau_f = params # In Python, this is a way to define variables, given a list of values. Only 1 line is required
 
     # These are the parameters for which we know the values of
@@ -365,6 +366,7 @@ def solve_ODE(params):
     k3 = tau_m
     k11 = K_p
 
+    
     # Time ranges from T = 0 to T = 5000 seconds
     T = np.linspace(0, 5000, len(subset_ProteinConcentration_nM_List)) # Same size as the experimental data of the protein concentration
 
@@ -376,6 +378,7 @@ def solve_ODE(params):
 
 # The objective function uses the method of "Sum of Squared Errors (SSE)"
 def objective_function(params):
+    global subset_ProteinConcentration_nM_List
     pModel = solve_ODE(params)
     return np.sum((subset_ProteinConcentration_nM_List-pModel)**2)
 
@@ -386,7 +389,7 @@ result = minimize(objective_function, initial_guesses, method='TNC') # "L-BFGS-B
 optimizedParameters = result.x #  Since "result" is an object, we need to access a certain attribute of "result" to extract the optimized parameters
 
 def showOptimizedModel():
-
+    global subset_ProteinConcentration_nM_List
     # Print the optimized parameters
     print("Optimized parameters:")
     print("k_TL:", optimizedParameters[0])
@@ -413,4 +416,3 @@ def showOptimizedModel():
     plt.grid(True)
     plt.show()
 
-showOptimizedModel()
