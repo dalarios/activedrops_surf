@@ -205,7 +205,7 @@ def solve_ODE(params, N_p, N_m, D):
 
     p = solve_ivp(dPdt, [T[0], T[-1]], [P_initial], t_eval=T, args=(Q, S, tau_0, tau_f, k3, k11), method="LSODA")
     return p.y[0]
-
+  
 def objective_function(params, N_p, N_m, D):
     pModel = solve_ODE(params, N_p, N_m, D)
     return np.sum((subset_ProteinConcentration_nM_List - pModel) ** 2)
