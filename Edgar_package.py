@@ -8,6 +8,7 @@ from scipy.ndimage import gaussian_filter1d
 from scipy.integrate import solve_ivp
 from ipywidgets import interact, FloatSlider, Layout, interactive
 from scipy.optimize import minimize
+import random
 
 
 # Part 1
@@ -251,11 +252,18 @@ def objective_function(params, N_p, N_m, D):
 
 def optimize_parameters(initial_guesses, N_p, N_m, D):
     global optimizedParameters
-    bounds = [(0, None), (0, None), (0, None), (0, None), (0, None), (0, None), (0, None), (0, None), (0, None), (0, None), (0, None)]
+    bounds = [(0, 100), (0, 100), (0, 500), (0, 1e4), (0, 100), (0, 1e5), (0, 100), (0, 500), (0, 100), (0, 1e6), (0, 2000)]
     result = minimize(objective_function, initial_guesses, args=(N_p, N_m, D), method='TNC', bounds=bounds)  # "L-BFGS-B" is a popular method to minimize an objective function. "TNC" is another method to minimize an objective function
     optimizedParameters = result.x  #  Since "result" is an object, we need to access a certain attribute of "result" to extract the optimized parameters
 
-def showOptimizedModel(N_p, N_m, D):
+def optimize_parameters_many_times(initial_guesses, N_p, N_m, D):
+    bounds = [(0, 100), (0, 100), (0, 500), (0, 1e4), (0, 100), (0, 1e5), (0, 100), (0, 500), (0, 100), (0, 1e6), (0, 2000)]
+    result = minimize(objective_function, initial_guesses, args=(N_p, N_m, D), method='TNC', bounds=bounds)  # "L-BFGS-B" is a popular method to minimize an objective function. "TNC" is another method to minimize an objective function
+    currentOptimizedParameters = result.x  #  Since "result" is an object, we need to access a certain attribute of "result" to extract the optimized parameters
+    return currentOptimizedParameters
+
+# Here, the algorithm to optimize parameters is only used once. This function shows a demo graph
+def showOptimizedModel(N_p, N_m, D): 
 
     global optimizedParameters
     # Print the optimized parameters
@@ -284,6 +292,44 @@ def showOptimizedModel(N_p, N_m, D):
     plt.grid(True)
     plt.show()
 
+def runParameterOptimization(N_p, N_m, D, theory_file_name):
+
+    global optimizedParameters
+    parameter_names = ["k_TL", "k_TX", "R_p", "tau_m", "K_TL", "R", "k_deg", "X_p", "K_p", "tau_0", "tau_f"]
+
+    """Add parameters to a DataFrame. 
+    The first row will be the values of the parameters used for the demo. graph """
+    parameter_values = optimizedParameters  
+    parameters_df = pd.DataFrame([parameter_values], columns=parameter_names)
+
+    for param, value in zip(["N_p", "N_m", "D"], [N_p, N_m, D]):
+        parameters_df[param] = value 
+
+    knownParameters = [N_p, N_m, D]
+    parametersRangeMatrix = [] # This will become a matrix
+    for i in range(100):
+        #Create a list of 11 random float values. All values are within the lower and upper bounds previously set
+        random_initial_guesses = [round(random.uniform(low, high), 2) for low, high in [(0, 100), (0, 100), (0, 500), (0, 1e4), (0, 100), (0, 1e5), (0, 100), (0, 500), (0, 100), (0, 1e6), (0, 2000)]]
+        currentOptimizedParameters = optimize_parameters_many_times(random_initial_guesses, N_p, N_m, D) # Calculate new values for the optimal parameters
+        currentOptimizedParameters_List = currentOptimizedParameters.tolist() # Convert a "np.ndarray" object to a Python list
+        newRow = currentOptimizedParameters_List + knownParameters # Combine 2 Python lists into a single list
+        parameters_df.loc[len(parameters_df)] = newRow # Add a new row of optimized parameters to the DataFrame
+        if (i == 50): # Plot a random iteration
+            optimizedParameters = np.array([])
+            optimizedParameters = np.array(currentOptimizedParameters_List)
+            showOptimizedModel(N_p, N_m, D)
+    
+    for i in parameter_names:
+        minValue = parameters_df[i].min()
+        maxValue = parameters_df[i].max()
+        parameterRange = [minValue, maxValue]
+        parametersRangeMatrix.append(parameterRange)
+    print("Range of parameters:")
+    print()
+    print(parametersRangeMatrix)
+
+    saveTheoreticalData(parameters_df, theory_file_name) # Save the DataFrame to a .csv file
+    
 def saveTheoreticalData(theory_df, theory_file_name):
     theory_df.to_csv(theory_file_name, index=False)
 
@@ -336,20 +382,20 @@ def showModel(optimizedParameters, N_p, N_m, D):
     style = {'description_width': '300px'}  # Adjust the width as needed
    
     interact(plot_proteinConcentration, 
-            k_TL=FloatSlider(value=k_TL , min=1.0, max=200.0, step=0.1, description='k_TL (amino acids/s)', layout=Layout(width='900px'), style=style),
-            k_TX=FloatSlider(value=k_TX , min=0.1, max=200.0, step=0.1, description='k_TX (rNTP/s)', layout=Layout(width='900px'), style=style),
-            R_p=FloatSlider(value=R_p, min=10.0, max=90.0, step=1, description='RNA polymerase concentration (nM)', layout=Layout(width='900px'), style=style), 
-            D=FloatSlider(value=D, min=20.0, max=200.0, step=1, description='DNA concentration (nM)', layout=Layout(width='900px'), style=style), ## We know for sure the value of DNA concentration
-            tau_m=FloatSlider(value=tau_m , min=300.0, max=1200.0, step=1.0, description='mRNA lifetime (seconds)', layout=Layout(width='900px'), style=style),
-            N_p=FloatSlider(value=N_p, min=100, max=4500, step=100, description='protein length (amino acids)', layout=Layout(width='900px'), style=style), ## We know for sure the number of aminoacids
-            K_TL = FloatSlider(value=K_TL, min=0.1, max=10, step=0.1, description='Michaelis-Menten constant for translation (nM)', layout=Layout(width='900px'), style=style),
-            R=FloatSlider(value=R, min=50.0, max=350.0, step=10, description='ribosome concentration (nM)', layout=Layout(width='900px'), style=style), 
-            N_m=FloatSlider(value=N_m, min=1500, max=4500, step=100, description='mRNA Length (Nucleotides)', layout=Layout(width='900px'), style=style), ## We know for sure the number of nucleotides (this is based on the DNA design)
-            k_deg=FloatSlider(value=k_deg, min=0.01, max=5.0, step=0.01, description='protein degradation rate constant (1/s)', layout=Layout(width='900px'), style=style), 
-            X_p=FloatSlider(value=X_p, min=0.07, max=20.0, step=0.01, description='protease concentration (nM)', layout=Layout(width='900px'), style=style), 
-            K_p=FloatSlider(value=K_p, min=0.1, max=30.0, step=0.1, description='Michaelis-Menten constant for degradation (nM)', layout=Layout(width='900px'), style=style),
-            tau_0=FloatSlider(value=tau_0, min=0.0, max=100.0, step=0.1, description='transcription delay (seconds)', layout=Layout(width='900px'), style=style), 
-            tau_f=FloatSlider(value=tau_f, min=0.0, max=2000.0, step=1.0, description='protein folding delay (seconds)', layout=Layout(width='900px'), style=style))
+            k_TL=FloatSlider(value=k_TL , min=0.0, max=100, step=0.1, description='k_TL (amino acids/s)', layout=Layout(width='900px'), style=style),
+            k_TX=FloatSlider(value=k_TX , min=0.0, max=100, step=0.1, description='k_TX (rNTP/s)', layout=Layout(width='900px'), style=style),
+            R_p=FloatSlider(value=R_p, min=0.0, max=500, step=0.1, description='RNA polymerase concentration (nM)', layout=Layout(width='900px'), style=style), 
+            D=FloatSlider(value=D, min=0.0, max=D+1, step=1, description='DNA concentration (nM)', layout=Layout(width='900px'), style=style), ## We know for sure the value of DNA concentration
+            tau_m=FloatSlider(value=tau_m , min=0.0, max=1e4, step=0.1, description='mRNA lifetime (seconds)', layout=Layout(width='900px'), style=style),
+            N_p=FloatSlider(value=N_p, min=0.0, max=N_p+1, step=0.1, description='protein length (amino acids)', layout=Layout(width='900px'), style=style), ## We know for sure the number of aminoacids
+            K_TL = FloatSlider(value=K_TL, min=0.0, max=100, step=0.1, description='Michaelis-Menten constant for translation (nM)', layout=Layout(width='900px'), style=style),
+            R=FloatSlider(value=R, min=0.0, max=1e5, step=0.1, description='ribosome concentration (nM)', layout=Layout(width='900px'), style=style), 
+            N_m=FloatSlider(value=N_m, min=0.0, max=N_m+1, step=0.1, description='mRNA Length (Nucleotides)', layout=Layout(width='900px'), style=style), ## We know for sure the number of nucleotides (this is based on the DNA design)
+            k_deg=FloatSlider(value=k_deg, min=0.0, max=1e5, step=0.1, description='protein degradation rate constant (1/s)', layout=Layout(width='900px'), style=style), 
+            X_p=FloatSlider(value=X_p, min=0.0, max=500, step=0.1, description='protease concentration (nM)', layout=Layout(width='900px'), style=style), 
+            K_p=FloatSlider(value=K_p, min=0.0, max=100, step=0.1, description='Michaelis-Menten constant for degradation (nM)', layout=Layout(width='900px'), style=style),
+            tau_0=FloatSlider(value=tau_0, min=0.0, max=1e6, step=0.1, description='transcription delay (seconds)', layout=Layout(width='900px'), style=style), 
+            tau_f=FloatSlider(value=tau_f, min=0.0, max=2000, step=0.1, description='protein folding delay (seconds)', layout=Layout(width='900px'), style=style))
 
 
 
@@ -372,18 +418,11 @@ def runIndividualAnalysis(paths, calibration_curve_paths, time_interval, droplet
     subset_ProteinConcentration_nM_List = proteinConcentration_nM_List_NP[subset_indices]
 
     optimize_parameters(initial_guesses, N_p, N_m, D)
+
     showOptimizedModel(N_p, N_m, D)
+    showModel(optimizedParameters, N_p, N_m, D)
 
-    # Add parameters to the DataFrame
-    parameter_names = ["k_TL", "k_TX", "R_p", "tau_m", "K_TL", "R", "k_deg", "X_p", "K_p", "tau_0", "tau_f"]
-    parameter_values = optimizedParameters # Create a new list, by making it equal to another list 
-    parameters_df = pd.DataFrame([parameter_values], columns=parameter_names)
-    
-    for param, value in zip(["N_p", "N_m", "D"], [N_p, N_m, D]):
-        parameters_df[param] = value
-
-    saveTheoreticalData(parameters_df, theory_file_name)
-    
+    runParameterOptimization(N_p, N_m, D, theory_file_name)
     # Part 3
     showModel(optimizedParameters, N_p, N_m, D)
 
