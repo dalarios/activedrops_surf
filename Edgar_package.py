@@ -9,6 +9,7 @@ from scipy.integrate import solve_ivp
 from ipywidgets import interact, FloatSlider, Layout, interactive
 from scipy.optimize import minimize
 import random
+import seaborn as sns
 
 
 # Part 1
@@ -252,12 +253,13 @@ def objective_function(params, N_p, N_m, D):
 
 def optimize_parameters(initial_guesses, N_p, N_m, D):
     global optimizedParameters
-    bounds = [(0, 100), (0, 100), (0, 500), (0, 1e4), (0, 100), (0, 1e5), (0, 100), (0, 500), (0, 100), (0, 1e6), (0, 2000)]
+    # The lower bounds of tau_m and K_p are a very small positive number (not 0), to avoid having issues of dividing by 0
+    bounds = [(0, 100), (0, 100), (0, 500), (1e-6, 1e4), (0, 100), (1e-6, 1e5), (0, 100), (0, 500), (1e-6, 100), (0, 1e6), (0, 2000)]
     result = minimize(objective_function, initial_guesses, args=(N_p, N_m, D), method='TNC', bounds=bounds)  # "L-BFGS-B" is a popular method to minimize an objective function. "TNC" is another method to minimize an objective function
     optimizedParameters = result.x  #  Since "result" is an object, we need to access a certain attribute of "result" to extract the optimized parameters
 
 def optimize_parameters_many_times(initial_guesses, N_p, N_m, D):
-    bounds = [(0, 100), (0, 100), (0, 500), (0, 1e4), (0, 100), (0, 1e5), (0, 100), (0, 500), (0, 100), (0, 1e6), (0, 2000)]
+    bounds = [(0, 100), (0, 100), (0, 500), (1e-6, 1e4), (0, 100), (1e-6, 1e5), (0, 100), (0, 500), (1e-6, 100), (0, 1e6), (0, 2000)]
     result = minimize(objective_function, initial_guesses, args=(N_p, N_m, D), method='TNC', bounds=bounds)  # "L-BFGS-B" is a popular method to minimize an objective function. "TNC" is another method to minimize an objective function
     currentOptimizedParameters = result.x  #  Since "result" is an object, we need to access a certain attribute of "result" to extract the optimized parameters
     return currentOptimizedParameters
@@ -309,7 +311,7 @@ def runParameterOptimization(N_p, N_m, D, theory_file_name):
     parametersRangeMatrix = [] # This will become a matrix
     for i in range(100):
         #Create a list of 11 random float values. All values are within the lower and upper bounds previously set
-        random_initial_guesses = [round(random.uniform(low, high), 2) for low, high in [(0, 100), (0, 100), (0, 500), (0, 1e4), (0, 100), (0, 1e5), (0, 100), (0, 500), (0, 100), (0, 1e6), (0, 2000)]]
+        random_initial_guesses = [round(random.uniform(low, high), 2) for low, high in [(0, 100), (0, 100), (0, 500), (1e-6, 1e4), (0, 100), (1e-6, 1e5), (0, 100), (0, 500), (1e-6, 100), (0, 1e6), (0, 2000)]]
         currentOptimizedParameters = optimize_parameters_many_times(random_initial_guesses, N_p, N_m, D) # Calculate new values for the optimal parameters
         currentOptimizedParameters_List = currentOptimizedParameters.tolist() # Convert a "np.ndarray" object to a Python list
         newRow = currentOptimizedParameters_List + knownParameters # Combine 2 Python lists into a single list
@@ -320,8 +322,8 @@ def runParameterOptimization(N_p, N_m, D, theory_file_name):
             showOptimizedModel(N_p, N_m, D)
     
     for i in parameter_names:
-        minValue = parameters_df[i].min()
-        maxValue = parameters_df[i].max()
+        minValue = parameters_df[i].min() # Extracts the minimum value of each ENTIRE column
+        maxValue = parameters_df[i].max() # Extracts the maximum value of each ENTIRE column
         parameterRange = [minValue, maxValue]
         parametersRangeMatrix.append(parameterRange)
     print("Range of parameters:")
@@ -385,12 +387,12 @@ def showModel(optimizedParameters, N_p, N_m, D):
             k_TL=FloatSlider(value=k_TL , min=0.0, max=100, step=0.1, description='k_TL (amino acids/s)', layout=Layout(width='900px'), style=style),
             k_TX=FloatSlider(value=k_TX , min=0.0, max=100, step=0.1, description='k_TX (rNTP/s)', layout=Layout(width='900px'), style=style),
             R_p=FloatSlider(value=R_p, min=0.0, max=500, step=0.1, description='RNA polymerase concentration (nM)', layout=Layout(width='900px'), style=style), 
-            D=FloatSlider(value=D, min=0.0, max=D+1, step=1, description='DNA concentration (nM)', layout=Layout(width='900px'), style=style), ## We know for sure the value of DNA concentration
+            D=FloatSlider(value=D, min=0.0, max=1000, step=1, description='DNA concentration (nM)', layout=Layout(width='900px'), style=style), ## We know for sure the value of DNA concentration
             tau_m=FloatSlider(value=tau_m , min=0.0, max=1e4, step=0.1, description='mRNA lifetime (seconds)', layout=Layout(width='900px'), style=style),
-            N_p=FloatSlider(value=N_p, min=0.0, max=N_p+1, step=0.1, description='protein length (amino acids)', layout=Layout(width='900px'), style=style), ## We know for sure the number of aminoacids
+            N_p=FloatSlider(value=N_p, min=0.0, max=10000, step=1, description='protein length (amino acids)', layout=Layout(width='900px'), style=style), ## We know for sure the number of aminoacids
             K_TL = FloatSlider(value=K_TL, min=0.0, max=100, step=0.1, description='Michaelis-Menten constant for translation (nM)', layout=Layout(width='900px'), style=style),
             R=FloatSlider(value=R, min=0.0, max=1e5, step=0.1, description='ribosome concentration (nM)', layout=Layout(width='900px'), style=style), 
-            N_m=FloatSlider(value=N_m, min=0.0, max=N_m+1, step=0.1, description='mRNA Length (Nucleotides)', layout=Layout(width='900px'), style=style), ## We know for sure the number of nucleotides (this is based on the DNA design)
+            N_m=FloatSlider(value=N_m, min=0.0, max=10000, step=1, description='mRNA Length (Nucleotides)', layout=Layout(width='900px'), style=style), ## We know for sure the number of nucleotides (this is based on the DNA design)
             k_deg=FloatSlider(value=k_deg, min=0.0, max=1e5, step=0.1, description='protein degradation rate constant (1/s)', layout=Layout(width='900px'), style=style), 
             X_p=FloatSlider(value=X_p, min=0.0, max=500, step=0.1, description='protease concentration (nM)', layout=Layout(width='900px'), style=style), 
             K_p=FloatSlider(value=K_p, min=0.0, max=100, step=0.1, description='Michaelis-Menten constant for degradation (nM)', layout=Layout(width='900px'), style=style),
@@ -441,6 +443,7 @@ def runIndividualAnalysis(paths, calibration_curve_paths, time_interval, droplet
 def showExperimentalDataTogether():
 
     experimentalFiles = sorted(glob.glob("experimentalData_k*"))
+    motorProteins_Names = [file.replace("experimentalData_", "").replace(".csv", "") for file in experimentalFiles]
 
     plt.figure(figsize=(10, 6)) # Preparation for plotting
     for i in experimentalFiles:
@@ -451,6 +454,7 @@ def showExperimentalDataTogether():
     plt.xlabel('Time (min)')
     plt.ylabel('Mean Intensity (A.U.)')
     plt.grid(True)
+    plt.legend(motorProteins_Names)
     plt.savefig("Mean_Intensity.png")
     plt.show() # At the end of the loop, call the .show() function to combine all the plots created inside the for loop
 
@@ -463,6 +467,7 @@ def showExperimentalDataTogether():
     plt.xlabel('Time (min)')
     plt.ylabel('Protein Concentration (ng/µL)')
     plt.grid(True)
+    plt.legend(motorProteins_Names)
     plt.savefig("Protein_Concentration.png")
     plt.show() # At the end of the loop, call the .show() function to combine all the plots created inside the for loop
 
@@ -474,7 +479,8 @@ def showExperimentalDataTogether():
     plt.title('Protein Concentration (nM) vs Time')
     plt.xlabel('Time (min)')
     plt.ylabel('Protein Concentration (nM)')
-    plt.grid(True)  
+    plt.grid(True)
+    plt.legend(motorProteins_Names)  
     plt.savefig("Protein_Concentration_(nM).png")
     plt.show() # At the end of the loop, call the .show() function to combine all the plots created inside the for loop
 
@@ -486,7 +492,8 @@ def showExperimentalDataTogether():
     plt.title('Number of Protein Molecules vs Time')
     plt.xlabel('Time (min)')
     plt.ylabel('Number of Protein Molecules')
-    plt.grid(True)  
+    plt.grid(True)
+    plt.legend(motorProteins_Names)  
     plt.savefig("Number_of_Protein_Molecules.png")
     plt.show() # At the end of the loop, call the .show() function to combine all the plots created inside the for loop
 
@@ -499,6 +506,7 @@ def showExperimentalDataTogether():
     plt.xlabel('Time (min)')
     plt.ylabel('Rate of Change of Protein Molecules (PM/min)')
     plt.grid(True)
+    plt.legend(motorProteins_Names)
     plt.savefig("Rate_of_Change_of_Protein_Molecules.png")
     plt.show() # At the end of the loop, call the .show() function to combine all the plots created inside the for loop
 
@@ -506,4 +514,18 @@ def showExperimentalDataTogether():
 # Part 5
 
 def showTheoreticalDataTogether():
+
     theoreticalFiles = glob.glob("optimizedParameters_k*")
+    motorProteins_Names = [file.replace("optimizedParameters_", "").replace(".csv", "") for file in theoreticalFiles]
+
+    completeDataFrame = pd.DataFrame()
+    for i in range(len(theoreticalFiles)):
+        dataFrame_Protein = pd.read_csv(theoreticalFiles[i]) # Save into a Pandas dataframe ALL the data for the current protein
+        dataFrame_Protein["Kinesin Motor Protein"] = motorProteins_Names[i]
+        completeDataFrame = pd.concat([completeDataFrame, dataFrame_Protein], ignore_index=True)
+
+    # Create a scatter matrix, which shows the different values of the optimized parameters for all kinesin motor proteins
+    sns.pairplot(completeDataFrame, hue="Kinesin Motor Protein")
+    plt.show()
+    
+    
