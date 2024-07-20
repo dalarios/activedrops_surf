@@ -23,7 +23,7 @@ numberOfProteinMolecules_List = list()
 rateOfChangeProteinMolecules_List = list()
 optimizedParameters = list()
 
-# This function utilizes the images taken for an experiment of a kinesis motor protein
+# This function utilizes the images taken for an experiment of a kinesin motor protein
 def calculateMeanIntensity(paths):
     for i in range(0, len(paths)): 
         # Load the image as a matrix
@@ -99,7 +99,7 @@ def constructDataFrames(timeInterval):
     plt.figure(figsize=(10, 6))
     plt.plot(df['Time (min)'], df['Mean Intensity'], marker='o')
     plt.title('Mean Intensity vs Time')
-    plt.xlabel('Time (t)')
+    plt.xlabel('Time (min)')
     plt.ylabel('Mean Intensity')
     plt.grid(True)
     plt.show()
@@ -112,7 +112,7 @@ def constructDataFrames(timeInterval):
     plt.figure(figsize=(10, 6))
     plt.plot(df2['Time (min)'], df2['Protein Concentration (nanogram / microliter)'], marker='o')
     plt.title('Protein Concentration vs Time')
-    plt.xlabel('Time (t)')
+    plt.xlabel('Time (min)')
     plt.ylabel('Protein Concentration (microgram / milliliter)')
     plt.grid(True)
     plt.show()
@@ -125,7 +125,7 @@ def constructDataFrames(timeInterval):
     plt.figure(figsize=(10, 6))
     plt.plot(df3['Time (min)'], df3['Protein Concentration (nM)'], marker='o')
     plt.title('Protein Concentration (nM) vs Time')
-    plt.xlabel('Time (t)')
+    plt.xlabel('Time (min)')
     plt.ylabel('Protein Concentration (nM)')
     plt.grid(True)
     plt.show()
@@ -144,7 +144,7 @@ def getNumberOfProteinMolecules(dropletVolume, timeInterval, mw_kda):
     plt.figure(figsize=(10, 6))
     plt.plot(df['Time (min)'], df['Number of Protein Molecules'], marker='o')
     plt.title('Number of Protein Molecules vs Time')
-    plt.xlabel('Time (t)')
+    plt.xlabel('Time (min)')
     plt.ylabel('Number of Protein Molecules')
     plt.grid(True)
     plt.show()
@@ -152,7 +152,7 @@ def getNumberOfProteinMolecules(dropletVolume, timeInterval, mw_kda):
     plt.figure(figsize=(10, 6))
     plt.plot(df['Time (min)'], df['Number of Protein Molecules'], marker='o')
     plt.title('Number of Protein Molecules vs Time')
-    plt.xlabel('Time (t)')
+    plt.xlabel('Time (min)')
     plt.ylabel('Number of Protein Molecules')
     # y axis log scale
     plt.yscale('log')
@@ -179,7 +179,7 @@ def getRateOfChangeProteinMolecules(timeInterval):
     # Plot the estimated derivative
     plt.figure(figsize=(10, 6))
     plt.plot(t_vals, dp_dt, label='Numerical derivative', marker='o', color="green")
-    plt.xlabel('Time (t)')
+    plt.xlabel('Time (min)')
     plt.ylabel('Rate of change of the number of protein molecules')
     plt.title('Rate of change of the number of protein molecules with respect to time')
     plt.legend()
@@ -518,14 +518,23 @@ def showTheoreticalDataTogether():
     theoreticalFiles = glob.glob("optimizedParameters_k*")
     motorProteins_Names = [file.replace("optimizedParameters_", "").replace(".csv", "") for file in theoreticalFiles]
 
-    completeDataFrame = pd.DataFrame()
+    completeDataFrame = pd.DataFrame() # Initialize an empty DataFrame that will be filled in a loop
     for i in range(len(theoreticalFiles)):
         dataFrame_Protein = pd.read_csv(theoreticalFiles[i]) # Save into a Pandas dataframe ALL the data for the current protein
         dataFrame_Protein["Kinesin Motor Protein"] = motorProteins_Names[i]
         completeDataFrame = pd.concat([completeDataFrame, dataFrame_Protein], ignore_index=True)
 
-    # Create a scatter matrix, which shows the different values of the optimized parameters for all kinesin motor proteins
-    sns.pairplot(completeDataFrame, hue="Kinesin Motor Protein")
+    # "Melt" the data. Convert the DataFrame from wide format to long format.
+    """With the "long" format, the DataFrame has 3 columns. One for the kinesin motor proteins, 
+    another one for the names of the parameters, and the third column is for the values of the parameters.
+    """
+    melted_data = completeDataFrame.melt(id_vars='Kinesin Motor Protein', var_name='Parameter Name', value_name='Value of Parameter')
+    
+    # Create the categorical plot
+    plt.figure(figsize=(15, 10))
+    sns.stripplot(x='Parameter Name', y='Value of Parameter', hue='Kinesin Motor Protein', data=melted_data, dodge=True, jitter=True, alpha=0.7)
+    plt.xticks(rotation=90)
+    plt.title('Parameter Values for the Kinesin Motor Proteins')
     plt.show()
     
     
