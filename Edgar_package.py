@@ -253,9 +253,13 @@ def solve_ODE(params, N_p, N_m, D):
     if p.status != 0:
         p = solve_ivp(dPdt, [T[0], T[-1]], [P_initial], t_eval=T, args=(Q, S, tau_0, tau_f, k3, k11), method='RK45', rtol=1e-6, atol=1e-8)
 
-    # Handle the case if the RK45 method also fails
+    # If BDF fails, then the "Radau" method will be used
     if p.status != 0:
-        raise RuntimeError("ODE solver failed for all attempted methods (LSODA, BDF, RK45).")
+         p = solve_ivp(dPdt, [T[0], T[-1]], [P_initial], t_eval=T, args=(Q, S, tau_0, tau_f, k3, k11), method='Radau', rtol=1e-6, atol=1e-8)
+
+    # Handle the case if the "Radau" method also fails
+    if p.status != 0:
+        raise RuntimeError("ODE solver failed for all attempted methods (LSODA, BDF, RK45, Radau).")
     
     return p.y[0]
 
@@ -326,16 +330,23 @@ def runParameterOptimization(initial_guesses, N_p, N_m, D, theory_file_name):
     knownParameters = [N_p, N_m, D]
     parametersRangeMatrix = [] # This will become a matrix
     for i in range(100):
-        #Create a list of 11 random float values. All values are within the lower and upper bounds previously set
-        random_initial_guesses = [np.clip(np.random.normal(loc=guess, scale=guess*0.1), low, high) for guess, (low, high) in zip(initial_guesses, bounds)]
-        currentOptimizedParameters = optimize_parameters_many_times(random_initial_guesses, N_p, N_m, D) # Calculate new values for the optimal parameters
-        currentOptimizedParameters_List = currentOptimizedParameters.tolist() # Convert a "np.ndarray" object to a Python list
-        newRow = currentOptimizedParameters_List + knownParameters # Combine 2 Python lists into a single list
-        parameters_df.loc[len(parameters_df)] = newRow # Add a new row of optimized parameters to the DataFrame
-        if (i % 33 == 0):
-            optimizedParameters = np.array([]) # Clear the contents of the global variable
-            optimizedParameters = currentOptimizedParameters
-            visualizeModel(optimizedParameters, N_p, N_m, D)
+
+        try:
+            #Create a list of 11 random float values. All values are within the lower and upper bounds previously set
+            random_initial_guesses = [np.clip(np.random.normal(loc=guess, scale=guess*0.1), low, high) for guess, (low, high) in zip(initial_guesses, bounds)]
+            currentOptimizedParameters = optimize_parameters_many_times(random_initial_guesses, N_p, N_m, D) # Calculate new values for the optimal parameters
+            currentOptimizedParameters_List = currentOptimizedParameters.tolist() # Convert a "np.ndarray" object to a Python list
+            newRow = currentOptimizedParameters_List + knownParameters # Combine 2 Python lists into a single list
+            parameters_df.loc[len(parameters_df)] = newRow # Add a new row of optimized parameters to the DataFrame
+            if (i % 33 == 0):
+                optimizedParameters = np.array([]) # Clear the contents of the global variable
+                optimizedParameters = currentOptimizedParameters
+                visualizeModel(optimizedParameters, N_p, N_m, D)
+        except IndexError:
+            print("The optimized parameters could not be found using the following random initial guesses:   ")
+            print("\n")
+            print(random_initial_guesses)
+            continue # Skip a bad set of optimized parameters that were calculated based on the random intial guesses
 
     
     for i in parameter_names:
@@ -405,15 +416,15 @@ def visualizeModel(optimizedParameters, N_p, N_m, D):
             k_TX=FloatSlider(value=k_TX , min=0.0, max=100, step=0.1, description='k_TX (rNTP/s)', layout=Layout(width='900px'), style=style),
             R_p=FloatSlider(value=R_p, min=0.0, max=500, step=0.1, description='RNA polymerase concentration (nM)', layout=Layout(width='900px'), style=style), 
             D=FloatSlider(value=D, min=0.0, max=1000, step=1, description='DNA concentration (nM)', layout=Layout(width='900px'), style=style), ## We know for sure the value of DNA concentration
-            tau_m=FloatSlider(value=tau_m , min=0.1, max=5000, step=0.1, description='mRNA lifetime (seconds)', layout=Layout(width='900px'), style=style),
+            tau_m=FloatSlider(value=tau_m , min=1e-6, max=5000, step=0.1, description='mRNA lifetime (seconds)', layout=Layout(width='900px'), style=style),
             N_p=FloatSlider(value=N_p, min=0.0, max=10000, step=1, description='protein length (amino acids)', layout=Layout(width='900px'), style=style), ## We know for sure the number of aminoacids
             K_TL = FloatSlider(value=K_TL, min=0.0, max=100, step=0.1, description='Michaelis-Menten constant for translation (nM)', layout=Layout(width='900px'), style=style),
-            R=FloatSlider(value=R, min=0.1, max=1e3, step=0.1, description='ribosome concentration (nM)', layout=Layout(width='900px'), style=style), 
+            R=FloatSlider(value=R, min=1e-6, max=1e3, step=0.1, description='ribosome concentration (nM)', layout=Layout(width='900px'), style=style), 
             N_m=FloatSlider(value=N_m, min=0.0, max=10000, step=1, description='mRNA Length (Nucleotides)', layout=Layout(width='900px'), style=style), ## We know for sure the number of nucleotides (this is based on the DNA design)
             k_deg=FloatSlider(value=k_deg, min=0.0, max=100, step=0.1, description='protein degradation rate constant (1/s)', layout=Layout(width='900px'), style=style), 
             X_p=FloatSlider(value=X_p, min=0.0, max=500, step=0.1, description='protease concentration (nM)', layout=Layout(width='900px'), style=style), 
-            K_p=FloatSlider(value=K_p, min=0.01, max=100, step=0.01, description='Michaelis-Menten constant for degradation (nM)', layout=Layout(width='900px'), style=style),
-            tau_0=FloatSlider(value=tau_0, min=0.01, max=10, step=0.01, description='transcription delay (seconds)', layout=Layout(width='900px'), style=style), 
+            K_p=FloatSlider(value=K_p, min=1e-6, max=100, step=0.01, description='Michaelis-Menten constant for degradation (nM)', layout=Layout(width='900px'), style=style),
+            tau_0=FloatSlider(value=tau_0, min=1e-6, max=10, step=0.01, description='transcription delay (seconds)', layout=Layout(width='900px'), style=style), 
             tau_f=FloatSlider(value=tau_f, min=0.0, max=2000, step=0.1, description='protein folding delay (seconds)', layout=Layout(width='900px'), style=style))
 
 
