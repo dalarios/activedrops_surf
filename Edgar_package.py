@@ -392,7 +392,23 @@ def plot_proteinConcentration(k_TL, k_TX, R_p, D, tau_m, N_p, K_TL, R, N_m, k_de
     P_initial = 0  # At t = 0, the protein concentration P(0) = 0
 
     # All of the constants such as Q, S, tau_0... need to be passed as arguments into the solve_ivp()function
-    p = solve_ivp(dPdt, [T[0], T[-1]], [P_initial], t_eval=T, args=(Q, S, tau_0, tau_f, k3, k11)) 
+    p = solve_ivp(dPdt, [T[0], T[-1]], [P_initial], t_eval=T, args=(Q, S, tau_0, tau_f, k3, k11), method ="LSODA", rtol=1e-6, atol=1e-8) # The "LSODA" method will be used to numerically solve the ODE
+    
+    # If LSODA fails, the BDF method will be used
+    if p.status != 0:
+        p = solve_ivp(dPdt, [T[0], T[-1]], [P_initial], t_eval=T, args=(Q, S, tau_0, tau_f, k3, k11), method='BDF', rtol=1e-6, atol=1e-8)
+
+    # If BDF fails, the RK45 method will be used
+    if p.status != 0:
+        p = solve_ivp(dPdt, [T[0], T[-1]], [P_initial], t_eval=T, args=(Q, S, tau_0, tau_f, k3, k11), method='RK45', rtol=1e-6, atol=1e-8)
+
+    # If BDF fails, then the "Radau" method will be used
+    if p.status != 0:
+         p = solve_ivp(dPdt, [T[0], T[-1]], [P_initial], t_eval=T, args=(Q, S, tau_0, tau_f, k3, k11), method='Radau', rtol=1e-6, atol=1e-8)
+
+    # Handle the case if the "Radau" method also fails
+    if p.status != 0:
+        raise RuntimeError("ODE solver failed for all attempted methods (LSODA, BDF, RK45, Radau).")
     
     plt.figure(figsize=(10, 6))  # Clear the figure before plotting
     plt.plot(T, proteinConcentration_nM_List, label='Experimental Curve', linestyle='--', color='orange')
@@ -412,20 +428,20 @@ def visualizeModel(optimizedParameters, N_p, N_m, D):
     style = {'description_width': '300px'}  # Adjust the width as needed
    
     interact(plot_proteinConcentration, 
-            k_TL=FloatSlider(value=k_TL , min=0.0, max=100, step=0.1, description='k_TL (amino acids/s)', layout=Layout(width='900px'), style=style),
-            k_TX=FloatSlider(value=k_TX , min=0.0, max=100, step=0.1, description='k_TX (rNTP/s)', layout=Layout(width='900px'), style=style),
-            R_p=FloatSlider(value=R_p, min=0.0, max=500, step=0.1, description='RNA polymerase concentration (nM)', layout=Layout(width='900px'), style=style), 
+            k_TL=FloatSlider(value=k_TL , min=0.0, max=100, step=0.1, description='k_TL (amino acids/s)', layout=Layout(width='900px'), style=style, readout_format='.6f'),
+            k_TX=FloatSlider(value=k_TX , min=0.0, max=100, step=0.1, description='k_TX (rNTP/s)', layout=Layout(width='900px'), style=style, readout_format='.6f'),
+            R_p=FloatSlider(value=R_p, min=0.0, max=500, step=0.1, description='RNA polymerase concentration (nM)', layout=Layout(width='900px'), style=style, readout_format='.6f'), 
             D=FloatSlider(value=D, min=0.0, max=1000, step=1, description='DNA concentration (nM)', layout=Layout(width='900px'), style=style), ## We know for sure the value of DNA concentration
-            tau_m=FloatSlider(value=tau_m , min=1e-6, max=5000, step=0.1, description='mRNA lifetime (seconds)', layout=Layout(width='900px'), style=style),
-            N_p=FloatSlider(value=N_p, min=0.0, max=10000, step=1, description='protein length (amino acids)', layout=Layout(width='900px'), style=style), ## We know for sure the number of aminoacids
-            K_TL = FloatSlider(value=K_TL, min=0.0, max=100, step=0.1, description='Michaelis-Menten constant for translation (nM)', layout=Layout(width='900px'), style=style),
-            R=FloatSlider(value=R, min=1e-6, max=1e3, step=0.1, description='ribosome concentration (nM)', layout=Layout(width='900px'), style=style), 
-            N_m=FloatSlider(value=N_m, min=0.0, max=10000, step=1, description='mRNA Length (Nucleotides)', layout=Layout(width='900px'), style=style), ## We know for sure the number of nucleotides (this is based on the DNA design)
-            k_deg=FloatSlider(value=k_deg, min=0.0, max=100, step=0.1, description='protein degradation rate constant (1/s)', layout=Layout(width='900px'), style=style), 
-            X_p=FloatSlider(value=X_p, min=0.0, max=500, step=0.1, description='protease concentration (nM)', layout=Layout(width='900px'), style=style), 
-            K_p=FloatSlider(value=K_p, min=1e-6, max=100, step=0.01, description='Michaelis-Menten constant for degradation (nM)', layout=Layout(width='900px'), style=style),
-            tau_0=FloatSlider(value=tau_0, min=1e-6, max=10, step=0.01, description='transcription delay (seconds)', layout=Layout(width='900px'), style=style), 
-            tau_f=FloatSlider(value=tau_f, min=0.0, max=2000, step=0.1, description='protein folding delay (seconds)', layout=Layout(width='900px'), style=style))
+            tau_m=FloatSlider(value=tau_m , min=1e-6, max=5000, step=0.1, description='mRNA lifetime (seconds)', layout=Layout(width='900px'), style=style, readout_format='.6f'),
+            N_p=FloatSlider(value=N_p, min=0.0, max=10000, step=1, description='protein length (amino acids)', layout=Layout(width='900px'), style=style, readout_format='.6f'), ## We know for sure the number of aminoacids
+            K_TL = FloatSlider(value=K_TL, min=0.0, max=100, step=0.1, description='Michaelis-Menten constant for translation (nM)', layout=Layout(width='900px'), style=style, readout_format='.6f'),
+            R=FloatSlider(value=R, min=1e-6, max=1e3, step=0.1, description='ribosome concentration (nM)', layout=Layout(width='900px'), style=style, readout_format='.6f'), 
+            N_m=FloatSlider(value=N_m, min=0.0, max=10000, step=1, description='mRNA Length (Nucleotides)', layout=Layout(width='900px'), style=style, readout_format='.6f'), ## We know for sure the number of nucleotides (this is based on the DNA design)
+            k_deg=FloatSlider(value=k_deg, min=0.0, max=100, step=0.1, description='protein degradation rate constant (1/s)', layout=Layout(width='900px'), style=style, readout_format='.6f'), 
+            X_p=FloatSlider(value=X_p, min=0.0, max=500, step=0.1, description='protease concentration (nM)', layout=Layout(width='900px'), style=style, readout_format='.6f'), 
+            K_p=FloatSlider(value=K_p, min=1e-6, max=100, step=0.01, description='Michaelis-Menten constant for degradation (nM)', layout=Layout(width='900px'), style=style, readout_format='.6f'),
+            tau_0=FloatSlider(value=tau_0, min=0.0, max=10, step=0.01, description='transcription delay (seconds)', layout=Layout(width='900px'), style=style, readout_format='.6f'), 
+            tau_f=FloatSlider(value=tau_f, min=0.0, max=2000, step=0.1, description='protein folding delay (seconds)', layout=Layout(width='900px'), style=style, readout_format='.6f'))
 
 
 # *** Wrapper function 
@@ -550,6 +566,7 @@ def showTheoreticalDataTogether():
     completeDataFrame = pd.DataFrame() # Initialize an empty DataFrame that will be filled in a loop
     for i in range(len(theoreticalFiles)):
         dataFrame_Protein = pd.read_csv(theoreticalFiles[i]) # Save into a Pandas dataframe ALL the data for the current protein
+        dataFrame_Protein = dataFrame_Protein.iloc[:, :-3] # Remove the last 3 columns of the DataFrame, which corresponds to the columns of the KNOWN PARAMETERS
         dataFrame_Protein["Kinesin Motor Protein"] = motorProteins_Names[i]
         completeDataFrame = pd.concat([completeDataFrame, dataFrame_Protein], ignore_index=True)
 
@@ -558,10 +575,23 @@ def showTheoreticalDataTogether():
     another one for the names of the parameters, and the third column is for the values of the parameters.
     """
     melted_data = completeDataFrame.melt(id_vars='Kinesin Motor Protein', var_name='Parameter Name', value_name='Value of Parameter')
-    
-    # Create the categorical plot
+
+    # Create a categorical plot to show the parameters with the smaller values
     plt.figure(figsize=(15, 10))
-    sns.stripplot(x='Parameter Name', y='Value of Parameter', hue='Kinesin Motor Protein', data=melted_data, dodge=True, jitter=True, alpha=0.7)
+
+    small_parameters = ["k_TL", "k_TX", "R_p", "K_TL", "k_deg", "X_p", "K_p", "tau_0"]
+    dataFrame_small = melted_data[melted_data["Parameter Name"].isin(small_parameters)]
+    sns.stripplot(x='Parameter Name', y='Value of Parameter', hue='Kinesin Motor Protein', data=dataFrame_small, dodge=True, jitter=True, alpha=0.7)
+    plt.title('Parameter Values for the Kinesin Motor Proteins')
+    plt.xticks(rotation=90)
+    plt.show()
+    
+    # Create a categorical plot to show the parameters with the larger values
+    plt.figure(figsize=(15, 10))
+
+    large_parameters = ["R", "tau_m", "tau_f"]
+    dataFrame_large = melted_data[melted_data["Parameter Name"].isin(large_parameters)]
+    sns.stripplot(x='Parameter Name', y='Value of Parameter', hue='Kinesin Motor Protein', data=dataFrame_large, dodge=True, jitter=True, alpha=0.7)
     plt.xticks(rotation=90)
     plt.title('Parameter Values for the Kinesin Motor Proteins')
     plt.show()
