@@ -243,23 +243,38 @@ def solve_ODE(params, N_p, N_m, D):
     P_initial = 0  # At t = 0, the protein concentration P(0) = 0
 
     # All of the constants such as Q, S, k3... need to be passed as arguments into the solve_ivp()function
-    p = solve_ivp(dPdt, [T[0], T[-1]], [P_initial], t_eval=T, args=(Q, S, tau_0, tau_f, k3, k11), method ="LSODA") # Use the "LSODA" method to solve the ODE
+    p = solve_ivp(dPdt, [T[0], T[-1]], [P_initial], t_eval=T, args=(Q, S, tau_0, tau_f, k3, k11), method ="LSODA", rtol=1e-6, atol=1e-8) # The "LSODA" method will be used to numerically solve the ODE
+    
+    # If LSODA fails, the BDF method will be used
+    if p.status != 0:
+        p = solve_ivp(dPdt, [T[0], T[-1]], [P_initial], t_eval=T, args=(Q, S, tau_0, tau_f, k3, k11), method='BDF', rtol=1e-6, atol=1e-8)
+
+    # If BDF fails, the RK45 method will be used
+    if p.status != 0:
+        p = solve_ivp(dPdt, [T[0], T[-1]], [P_initial], t_eval=T, args=(Q, S, tau_0, tau_f, k3, k11), method='RK45', rtol=1e-6, atol=1e-8)
+
+    # Handle the case if the RK45 method also fails
+    if p.status != 0:
+        raise RuntimeError("ODE solver failed for all attempted methods (LSODA, BDF, RK45).")
+    
     return p.y[0]
 
 # The objective function uses the method of "Sum of Squared Errors (SSE)"
 def objective_function(params, N_p, N_m, D):
     pModel = solve_ODE(params, N_p, N_m, D)
+    #print("subset_ProteinConcentration_nM_List shape:", subset_ProteinConcentration_nM_List.shape)
+    #print("pModel shape:", pModel.shape)
     return np.sum((subset_ProteinConcentration_nM_List-pModel)**2)
 
 def optimize_parameters(initial_guesses, N_p, N_m, D):
     global optimizedParameters
-    # The lower bounds of tau_m and K_p are a very small positive number (not 0), to avoid having issues of dividing by 0
-    bounds = [(0, 100), (0, 100), (0, 500), (1e-6, 1e4), (0, 100), (1e-6, 1e5), (0, 100), (0, 500), (1e-6, 100), (0, 1e6), (0, 2000)]
+    # The lower bounds of tau_m, R, and K_p are a very small positive number (not 0), to avoid having issues of dividing by 0
+    bounds = [(0, 100), (0, 100), (0, 500), (1e-6, 5000), (0, 100), (1e-6, 1e3), (0, 100), (0, 500), (1e-6, 100), (0, 10), (0, 2000)]
     result = minimize(objective_function, initial_guesses, args=(N_p, N_m, D), method='TNC', bounds=bounds)  # "L-BFGS-B" is a popular method to minimize an objective function. "TNC" is another method to minimize an objective function
     optimizedParameters = result.x  #  Since "result" is an object, we need to access a certain attribute of "result" to extract the optimized parameters
 
 def optimize_parameters_many_times(initial_guesses, N_p, N_m, D):
-    bounds = [(0, 100), (0, 100), (0, 500), (1e-6, 1e4), (0, 100), (1e-6, 1e5), (0, 100), (0, 500), (1e-6, 100), (0, 1e6), (0, 2000)]
+    bounds = [(0, 100), (0, 100), (0, 500), (1e-6, 5000), (0, 100), (1e-6, 1e3), (0, 100), (0, 500), (1e-6, 100), (0, 10), (0, 2000)]
     result = minimize(objective_function, initial_guesses, args=(N_p, N_m, D), method='TNC', bounds=bounds)  # "L-BFGS-B" is a popular method to minimize an objective function. "TNC" is another method to minimize an objective function
     currentOptimizedParameters = result.x  #  Since "result" is an object, we need to access a certain attribute of "result" to extract the optimized parameters
     return currentOptimizedParameters
@@ -294,7 +309,7 @@ def showOptimizedModel(N_p, N_m, D):
     plt.grid(True)
     plt.show()
 
-def runParameterOptimization(N_p, N_m, D, theory_file_name):
+def runParameterOptimization(initial_guesses, N_p, N_m, D, theory_file_name):
 
     global optimizedParameters
     parameter_names = ["k_TL", "k_TX", "R_p", "tau_m", "K_TL", "R", "k_deg", "X_p", "K_p", "tau_0", "tau_f"]
@@ -307,19 +322,21 @@ def runParameterOptimization(N_p, N_m, D, theory_file_name):
     for param, value in zip(["N_p", "N_m", "D"], [N_p, N_m, D]):
         parameters_df[param] = value 
 
+    bounds = [(0, 100), (0, 100), (0, 500), (1e-6, 5000), (0, 100), (1e-6, 1e3), (0, 100), (0, 500), (1e-6, 100), (0, 10), (0, 2000)] # Same bounds used for optimizing the model
     knownParameters = [N_p, N_m, D]
     parametersRangeMatrix = [] # This will become a matrix
     for i in range(100):
         #Create a list of 11 random float values. All values are within the lower and upper bounds previously set
-        random_initial_guesses = [round(random.uniform(low, high), 2) for low, high in [(0, 100), (0, 100), (0, 500), (1e-6, 1e4), (0, 100), (1e-6, 1e5), (0, 100), (0, 500), (1e-6, 100), (0, 1e6), (0, 2000)]]
+        random_initial_guesses = [np.clip(np.random.normal(loc=guess, scale=guess*0.1), low, high) for guess, (low, high) in zip(initial_guesses, bounds)]
         currentOptimizedParameters = optimize_parameters_many_times(random_initial_guesses, N_p, N_m, D) # Calculate new values for the optimal parameters
         currentOptimizedParameters_List = currentOptimizedParameters.tolist() # Convert a "np.ndarray" object to a Python list
         newRow = currentOptimizedParameters_List + knownParameters # Combine 2 Python lists into a single list
         parameters_df.loc[len(parameters_df)] = newRow # Add a new row of optimized parameters to the DataFrame
-        if (i == 50): # Plot a random iteration
-            optimizedParameters = np.array([])
-            optimizedParameters = np.array(currentOptimizedParameters_List)
-            showOptimizedModel(N_p, N_m, D)
+        if (i % 33 == 0):
+            optimizedParameters = np.array([]) # Clear the contents of the global variable
+            optimizedParameters = currentOptimizedParameters
+            visualizeModel(optimizedParameters, N_p, N_m, D)
+
     
     for i in parameter_names:
         minValue = parameters_df[i].min() # Extracts the minimum value of each ENTIRE column
@@ -376,7 +393,7 @@ def plot_proteinConcentration(k_TL, k_TX, R_p, D, tau_m, N_p, K_TL, R, N_m, k_de
     plt.grid(True)
     plt.show()
 
-def showModel(optimizedParameters, N_p, N_m, D):
+def visualizeModel(optimizedParameters, N_p, N_m, D):
 
     k_TL, k_TX, R_p, tau_m, K_TL, R , k_deg, X_p, K_p, tau_0, tau_f = optimizedParameters
 
@@ -388,17 +405,16 @@ def showModel(optimizedParameters, N_p, N_m, D):
             k_TX=FloatSlider(value=k_TX , min=0.0, max=100, step=0.1, description='k_TX (rNTP/s)', layout=Layout(width='900px'), style=style),
             R_p=FloatSlider(value=R_p, min=0.0, max=500, step=0.1, description='RNA polymerase concentration (nM)', layout=Layout(width='900px'), style=style), 
             D=FloatSlider(value=D, min=0.0, max=1000, step=1, description='DNA concentration (nM)', layout=Layout(width='900px'), style=style), ## We know for sure the value of DNA concentration
-            tau_m=FloatSlider(value=tau_m , min=0.0, max=1e4, step=0.1, description='mRNA lifetime (seconds)', layout=Layout(width='900px'), style=style),
+            tau_m=FloatSlider(value=tau_m , min=0.1, max=5000, step=0.1, description='mRNA lifetime (seconds)', layout=Layout(width='900px'), style=style),
             N_p=FloatSlider(value=N_p, min=0.0, max=10000, step=1, description='protein length (amino acids)', layout=Layout(width='900px'), style=style), ## We know for sure the number of aminoacids
             K_TL = FloatSlider(value=K_TL, min=0.0, max=100, step=0.1, description='Michaelis-Menten constant for translation (nM)', layout=Layout(width='900px'), style=style),
-            R=FloatSlider(value=R, min=0.0, max=1e5, step=0.1, description='ribosome concentration (nM)', layout=Layout(width='900px'), style=style), 
+            R=FloatSlider(value=R, min=0.1, max=1e3, step=0.1, description='ribosome concentration (nM)', layout=Layout(width='900px'), style=style), 
             N_m=FloatSlider(value=N_m, min=0.0, max=10000, step=1, description='mRNA Length (Nucleotides)', layout=Layout(width='900px'), style=style), ## We know for sure the number of nucleotides (this is based on the DNA design)
-            k_deg=FloatSlider(value=k_deg, min=0.0, max=1e5, step=0.1, description='protein degradation rate constant (1/s)', layout=Layout(width='900px'), style=style), 
+            k_deg=FloatSlider(value=k_deg, min=0.0, max=100, step=0.1, description='protein degradation rate constant (1/s)', layout=Layout(width='900px'), style=style), 
             X_p=FloatSlider(value=X_p, min=0.0, max=500, step=0.1, description='protease concentration (nM)', layout=Layout(width='900px'), style=style), 
-            K_p=FloatSlider(value=K_p, min=0.0, max=100, step=0.1, description='Michaelis-Menten constant for degradation (nM)', layout=Layout(width='900px'), style=style),
-            tau_0=FloatSlider(value=tau_0, min=0.0, max=1e6, step=0.1, description='transcription delay (seconds)', layout=Layout(width='900px'), style=style), 
+            K_p=FloatSlider(value=K_p, min=0.01, max=100, step=0.01, description='Michaelis-Menten constant for degradation (nM)', layout=Layout(width='900px'), style=style),
+            tau_0=FloatSlider(value=tau_0, min=0.01, max=10, step=0.01, description='transcription delay (seconds)', layout=Layout(width='900px'), style=style), 
             tau_f=FloatSlider(value=tau_f, min=0.0, max=2000, step=0.1, description='protein folding delay (seconds)', layout=Layout(width='900px'), style=style))
-
 
 
 # *** Wrapper function 
@@ -419,14 +435,16 @@ def runIndividualAnalysis(paths, calibration_curve_paths, time_interval, droplet
     subset_indices = np.linspace(0, length - 1, length, dtype=int)
     subset_ProteinConcentration_nM_List = proteinConcentration_nM_List_NP[subset_indices]
 
+    # This is to generate and show a "demo" optimized model. It directly uses the initial guesses provided (without generating random initial guesses!!)
     optimize_parameters(initial_guesses, N_p, N_m, D)
-
     showOptimizedModel(N_p, N_m, D)
-    showModel(optimizedParameters, N_p, N_m, D)
+    visualizeModel(optimizedParameters, N_p, N_m, D)
 
-    runParameterOptimization(N_p, N_m, D, theory_file_name)
     # Part 3
-    showModel(optimizedParameters, N_p, N_m, D)
+    runParameterOptimization(initial_guesses, N_p, N_m, D, theory_file_name)
+    visualizeModel(optimizedParameters, N_p, N_m, D)
+    
+    
 
     #Clear the contents of all the lists used. All of these lists are global variables and need to be cleared for the next protein analysis
     optimizedParameters = np.array([]) # Empty the numpy array to prepare the analysis of the next protein experiment
