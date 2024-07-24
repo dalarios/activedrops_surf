@@ -266,8 +266,6 @@ def solve_ODE(params, N_p, N_m, D):
 # The objective function uses the method of "Sum of Squared Errors (SSE)"
 def objective_function(params, N_p, N_m, D):
     pModel = solve_ODE(params, N_p, N_m, D)
-    #print("subset_ProteinConcentration_nM_List shape:", subset_ProteinConcentration_nM_List.shape)
-    #print("pModel shape:", pModel.shape)
     return np.sum((subset_ProteinConcentration_nM_List-pModel)**2)
 
 def optimize_parameters(initial_guesses, N_p, N_m, D):
@@ -281,10 +279,11 @@ def optimize_parameters_many_times(initial_guesses, N_p, N_m, D):
     bounds = [(0, 100), (0, 100), (0, 500), (1e-6, 5000), (0, 100), (1e-6, 1e3), (0, 100), (0, 500), (1e-6, 100), (0, 10), (0, 2000)]
     result = minimize(objective_function, initial_guesses, args=(N_p, N_m, D), method='TNC', bounds=bounds)  # "L-BFGS-B" is a popular method to minimize an objective function. "TNC" is another method to minimize an objective function
     currentOptimizedParameters = result.x  #  Since "result" is an object, we need to access a certain attribute of "result" to extract the optimized parameters
-    return currentOptimizedParameters
+    SSE = result.fun
+    return currentOptimizedParameters, SSE # Return the optimized parameters and the Sum of Squared Errors value
 
 # Here, the algorithm to optimize parameters is only used once. This function shows a demo graph
-def showOptimizedModel(N_p, N_m, D): 
+def showOptimizedParameters(N_p, N_m, D): 
 
     global optimizedParameters
     # Print the optimized parameters
@@ -316,15 +315,9 @@ def showOptimizedModel(N_p, N_m, D):
 def runParameterOptimization(initial_guesses, N_p, N_m, D, theory_file_name):
 
     global optimizedParameters
-    parameter_names = ["k_TL", "k_TX", "R_p", "tau_m", "K_TL", "R", "k_deg", "X_p", "K_p", "tau_0", "tau_f"]
 
-    """Add parameters to a DataFrame. 
-    The first row will be the values of the parameters used for the demo. graph """
-    parameter_values = optimizedParameters  
-    parameters_df = pd.DataFrame([parameter_values], columns=parameter_names)
-
-    for param, value in zip(["N_p", "N_m", "D"], [N_p, N_m, D]):
-        parameters_df[param] = value 
+    parameter_names = ["SSE Value", "k_TL", "k_TX", "R_p", "tau_m", "K_TL", "R", "k_deg", "X_p", "K_p", "tau_0", "tau_f", "N_p", "N_m", "D"]
+    parameters_df = pd.DataFrame(columns=parameter_names) # Initialize a DataFrame, by providing the names of all the columns
 
     bounds = [(0, 100), (0, 100), (0, 500), (1e-6, 5000), (0, 100), (1e-6, 1e3), (0, 100), (0, 500), (1e-6, 100), (0, 10), (0, 2000)] # Same bounds used for optimizing the model
     knownParameters = [N_p, N_m, D]
@@ -332,36 +325,64 @@ def runParameterOptimization(initial_guesses, N_p, N_m, D, theory_file_name):
     for i in range(100):
 
         try:
+            print(i)
             #Create a list of 11 random float values. All values are within the lower and upper bounds previously set
             random_initial_guesses = [np.clip(np.random.normal(loc=guess, scale=guess*0.1), low, high) for guess, (low, high) in zip(initial_guesses, bounds)]
-            currentOptimizedParameters = optimize_parameters_many_times(random_initial_guesses, N_p, N_m, D) # Calculate new values for the optimal parameters
+            currentOptimizedParameters, SSE= optimize_parameters_many_times(random_initial_guesses, N_p, N_m, D) # Calculate new values for the optimal parameters
             currentOptimizedParameters_List = currentOptimizedParameters.tolist() # Convert a "np.ndarray" object to a Python list
-            newRow = currentOptimizedParameters_List + knownParameters # Combine 2 Python lists into a single list
-            parameters_df.loc[len(parameters_df)] = newRow # Add a new row of optimized parameters to the DataFrame
+            SSE_value = [SSE] # This is a list containing 1 element
+            newRow = SSE_value + currentOptimizedParameters_List + knownParameters # Combine 3 Python lists into a single list. This exact order is very important.
+            parameters_df.loc[len(parameters_df)] = newRow # Add a new row of optimized parameters to the DataFrame. Also add the SSE value.
+            """
             if (i % 33 == 0):
                 optimizedParameters = np.array([]) # Clear the contents of the global variable
                 optimizedParameters = currentOptimizedParameters
                 visualizeModel(optimizedParameters, N_p, N_m, D)
+            """
         except IndexError:
             print("The optimized parameters could not be found using the following random initial guesses:   ")
             print("\n")
             print(random_initial_guesses)
             continue # Skip a bad set of optimized parameters that were calculated based on the random intial guesses
 
-    
+    """
     for i in parameter_names:
         minValue = parameters_df[i].min() # Extracts the minimum value of each ENTIRE column
         maxValue = parameters_df[i].max() # Extracts the maximum value of each ENTIRE column
         parameterRange = [minValue, maxValue]
         parametersRangeMatrix.append(parameterRange)
-    print("Range of parameters:")
+    print("Range of SSE values and parameters:")
     print()
     print(parametersRangeMatrix)
+    """
 
     saveTheoreticalData(parameters_df, theory_file_name) # Save the DataFrame to a .csv file
     
 def saveTheoreticalData(theory_df, theory_file_name):
     theory_df.to_csv(theory_file_name, index=False)
+
+
+def showBestAndWorstModel(theory_file_name, N_p, N_m, D):
+    theory_df = pd.read_csv(theory_file_name)
+    minSSE_Value = theory_df["SSE Value"].min()
+    maxSSE_Value = theory_df["SSE Value"].max()
+
+    index_minSSE = theory_df[theory_df["SSE Value"] == minSSE_Value].index[0]
+    index_maxSSE = theory_df[theory_df["SSE Value"] == maxSSE_Value].index[0]
+
+    minSSE_row = theory_df.loc[index_minSSE] # Complete row (this is still not useful)
+    minSSE_row_without_SSE = minSSE_row[minSSE_row != minSSE_Value] # Extract the other values found in the same row (NOT including the SSE value)
+    minSSE_row_with_optimized_parameters = minSSE_row_without_SSE[:-3]
+    print()
+    print("This is the model with the least value of SSE (this is the best found model):")
+    visualizeModel(minSSE_row_with_optimized_parameters, N_p, N_m, D)
+
+    maxSSE_row = theory_df.loc[index_maxSSE] # Complete row (this is still not useful)
+    maxSSE_row_without_SSE = maxSSE_row[maxSSE_row != maxSSE_Value] # Extract the other values found in the same row (NOT including the SSE value)
+    maxSSE_row_with_optimized_parameters = maxSSE_row_without_SSE[:-3]
+    print()
+    print("This is the model with the greatest value of SSE (this is the worst found model):")
+    visualizeModel(maxSSE_row_with_optimized_parameters, N_p, N_m, D)
 
 
 # Part 3
@@ -464,12 +485,12 @@ def runIndividualAnalysis(paths, calibration_curve_paths, time_interval, droplet
 
     # This is to generate and show a "demo" optimized model. It directly uses the initial guesses provided (without generating random initial guesses!!)
     optimize_parameters(initial_guesses, N_p, N_m, D)
-    showOptimizedModel(N_p, N_m, D)
+    showOptimizedParameters(N_p, N_m, D)
     visualizeModel(optimizedParameters, N_p, N_m, D)
 
     # Part 3
-    runParameterOptimization(initial_guesses, N_p, N_m, D, theory_file_name)
-    visualizeModel(optimizedParameters, N_p, N_m, D)
+    runParameterOptimization(initial_guesses, N_p, N_m, D, theory_file_name) 
+    showBestAndWorstModel(theory_file_name, N_p, N_m, D)
     
     
 
@@ -575,6 +596,16 @@ def showTheoreticalDataTogether():
     another one for the names of the parameters, and the third column is for the values of the parameters.
     """
     melted_data = completeDataFrame.melt(id_vars='Kinesin Motor Protein', var_name='Parameter Name', value_name='Value of Parameter')
+
+    # Create a categorical plot to show the SSE values of the optimized models
+    plt.figure(figsize=(15, 10))
+
+    SSE_Parameter = ["SSE Value"]
+    dataFrame_SSE_Values = melted_data[melted_data["Parameter Name"].isin(SSE_Parameter)]
+    sns.stripplot(x='Parameter Name', y='Value of Parameter', hue='Kinesin Motor Protein', data=dataFrame_SSE_Values, dodge=True, jitter=True, alpha=0.7)
+    plt.title('SSE Values of the Different Optimized Models That Were Generated')
+    plt.xticks(rotation=90)
+    plt.show()
 
     # Create a categorical plot to show the parameters with the smaller values
     plt.figure(figsize=(15, 10))
