@@ -193,10 +193,10 @@ def saveExperimentalData(experiment_fileName): # Saves the data to a CSV file
     headerRow = list()
     headerRow.append("Time (min)")
     headerRow.append("Mean Intensity (A.U.)")
-    headerRow.append("Protein Concentration (ng/µL)")
+    headerRow.append("Protein Concentration (ng per µL)")
     headerRow.append("Protein Concentration (nM)")
     headerRow.append("Number of Protein Molecules")
-    headerRow.append("Rate of Change of Number of Protein Molecules (PM/min)")
+    headerRow.append("Rate of Change of Number of Protein Molecules (PM per min)")
     writerCSV.writerow(headerRow)
     for i in range(0, len(meanIntensity_List)):
         dataRow = list()
@@ -211,6 +211,16 @@ def saveExperimentalData(experiment_fileName): # Saves the data to a CSV file
 
 
 # Part 2
+
+def loadExperimentalData(experiment_file_name):
+    global timeValues_List, proteinConcentration_nM_List 
+    
+    experimentalData_df = pd.read_csv(experiment_file_name) # Load the csv data into a Pandas DataFrame
+    column_TimeValues = experimentalData_df["Time (min)"]
+    timeValues_List = column_TimeValues.tolist()
+    column_ProteinConcentration_nM = experimentalData_df["Protein Concentration (nM)"]
+    proteinConcentration_nM_List = column_ProteinConcentration_nM.tolist()
+   
 
 # Calculate the [R_p D] complex using the equation in the paper's supplementary information. 
 def calculate_RpD2(R_p, D, k_TX): # Accept parameters to calculate the [R_p D] complex
@@ -238,7 +248,7 @@ def solve_ODE(params, N_p, N_m, D):
     k11 = K_p
 
     # Time ranges from T = 0 to T = 5000 seconds
-    T = np.linspace(0, 5000, len(subset_ProteinConcentration_nM_List)) # Same size as the experimental data of the protein concentration
+    T = np.linspace(0, 5000, len(proteinConcentration_nM_List)) # Same size as the experimental data of the protein concentration
 
     P_initial = 0  # At t = 0, the protein concentration P(0) = 0
 
@@ -266,7 +276,7 @@ def solve_ODE(params, N_p, N_m, D):
 # The objective function uses the method of "Sum of Squared Errors (SSE)"
 def objective_function(params, N_p, N_m, D):
     pModel = solve_ODE(params, N_p, N_m, D)
-    return np.sum((subset_ProteinConcentration_nM_List-pModel)**2)
+    return np.sum((proteinConcentration_nM_List-pModel)**2)
 
 def optimize_parameters(initial_guesses, N_p, N_m, D):
     global optimizedParameters
@@ -301,9 +311,9 @@ def showOptimizedParameters(N_p, N_m, D):
     print("tau_f:", optimizedParameters[10])
 
     optimizedModel = solve_ODE(optimizedParameters, N_p, N_m, D)
-    T = np.linspace(0, 5000, len(subset_ProteinConcentration_nM_List)) # Same size as the experimental data of the protein concentration
+    T = np.linspace(0, 5000, len(proteinConcentration_nM_List)) # Same size as the experimental data of the protein concentration
     plt.figure(figsize=(10, 6))  # Clear the figure before plotting
-    plt.plot(T, subset_ProteinConcentration_nM_List, label='Experimental Curve', linestyle='--', color='orange')
+    plt.plot(T, proteinConcentration_nM_List, label='Experimental Curve', linestyle='--', color='orange')
     plt.plot(T, optimizedModel, label='Theoretical Curve') # We need to access the "y" values from the object that stores the solution to the ODE
     plt.title('Protein Concentration vs. Time')
     plt.xlabel('Time (seconds)')
@@ -466,8 +476,8 @@ def visualizeModel(optimizedParameters, N_p, N_m, D):
 
 
 # *** Wrapper function 
-def runIndividualAnalysis(paths, calibration_curve_paths, time_interval, droplet_volume, mw_kda, N_p, N_m, D, initial_guesses, experiment_file_name, theory_file_name):
-    global subset_ProteinConcentration_nM_List, optimizedParameters, timeValues_List, meanIntensity_List, proteinConcentration_List, proteinConcentration_nM_List, numberOfProteinMolecules_List, rateOfChangeProteinMolecules_List
+def runFullAnalysis(paths, calibration_curve_paths, time_interval, droplet_volume, mw_kda, N_p, N_m, D, initial_guesses, experiment_file_name, theory_file_name):
+    global optimizedParameters, timeValues_List, meanIntensity_List, proteinConcentration_List, proteinConcentration_nM_List, numberOfProteinMolecules_List, rateOfChangeProteinMolecules_List
 
     # Part 1
     calculateMeanIntensity(paths)
@@ -478,10 +488,6 @@ def runIndividualAnalysis(paths, calibration_curve_paths, time_interval, droplet
     saveExperimentalData(experiment_file_name)
 
     # Part 2
-    length = len(proteinConcentration_nM_List)
-    proteinConcentration_nM_List_NP = np.array(proteinConcentration_nM_List)
-    subset_indices = np.linspace(0, length - 1, length, dtype=int)
-    subset_ProteinConcentration_nM_List = proteinConcentration_nM_List_NP[subset_indices]
 
     # This is to generate and show a "demo" optimized model. It directly uses the initial guesses provided (without generating random initial guesses!!)
     optimize_parameters(initial_guesses, N_p, N_m, D)
@@ -493,7 +499,6 @@ def runIndividualAnalysis(paths, calibration_curve_paths, time_interval, droplet
     showBestAndWorstModel(theory_file_name, N_p, N_m, D)
     
     
-
     #Clear the contents of all the lists used. All of these lists are global variables and need to be cleared for the next protein analysis
     optimizedParameters = np.array([]) # Empty the numpy array to prepare the analysis of the next protein experiment
     timeValues_List.clear()
@@ -503,12 +508,34 @@ def runIndividualAnalysis(paths, calibration_curve_paths, time_interval, droplet
     numberOfProteinMolecules_List.clear()
     rateOfChangeProteinMolecules_List.clear()
 
+    # *** 2nd Wrapper function 
+def runTheoreticalAnalysis(experiment_file_name, N_p, N_m, D, initial_guesses, theory_file_name):
+    global optimizedParameters, timeValues_List, proteinConcentration_nM_List
 
+    # Part 2
+    loadExperimentalData(experiment_file_name)
+
+    # Generates and shows a "demo" optimized model. This directly uses the initial guesses provided (without generating random initial guesses!!)
+    optimize_parameters(initial_guesses, N_p, N_m, D)
+    showOptimizedParameters(N_p, N_m, D)
+    visualizeModel(optimizedParameters, N_p, N_m, D)
+
+    # Part 3
+    runParameterOptimization(initial_guesses, N_p, N_m, D, theory_file_name) 
+    showBestAndWorstModel(theory_file_name, N_p, N_m, D)
+    
+
+    #Clear the contents of all the lists used. All of these lists are global variables and need to be cleared for the next protein analysis
+    optimizedParameters = np.array([]) # Empty the numpy array to prepare the analysis of the next protein experiment
+    timeValues_List.clear()
+    proteinConcentration_nM_List.clear()
+
+ 
 # Part 4
 
 def showExperimentalDataTogether():
 
-    experimentalFiles = sorted(glob.glob("experimentalData_k*"))
+    experimentalFiles = sorted(glob.glob("experimentalData_*"))
     motorProteins_Names = [file.replace("experimentalData_", "").replace(".csv", "") for file in experimentalFiles]
 
     plt.figure(figsize=(10, 6)) # Preparation for plotting
@@ -524,19 +551,20 @@ def showExperimentalDataTogether():
     plt.savefig("Mean_Intensity.png")
     plt.show() # At the end of the loop, call the .show() function to combine all the plots created inside the for loop
 
+    """
     plt.figure(figsize=(10, 6)) # Preparation for plotting
     for i in experimentalFiles:
         dataFrame_Protein = pd.read_csv(i) # Save into a Pandas dataframe ALL the data for the current protein
-        plt.plot(dataFrame_Protein['Time (min)'], dataFrame_Protein['Protein Concentration (ng/µL)'], marker='o') # Plot the "Protein Concentration" data only
-
+        plt.plot(dataFrame_Protein['Time (min)'], dataFrame_Protein['Protein Concentration (ng per µL)'], marker='o') # Plot the "Protein Concentration" data only
+    
     plt.title('Protein Concentration vs Time')
     plt.xlabel('Time (min)')
-    plt.ylabel('Protein Concentration (ng/µL)')
+    plt.ylabel('Protein Concentration (ng per µL)')
     plt.grid(True)
     plt.legend(motorProteins_Names)
     plt.savefig("Protein_Concentration.png")
     plt.show() # At the end of the loop, call the .show() function to combine all the plots created inside the for loop
-
+    """
     plt.figure(figsize=(10, 6)) # Preparation for plotting
     for i in experimentalFiles:
         dataFrame_Protein = pd.read_csv(i) # Save into a Pandas dataframe ALL the data for the current protein
@@ -566,11 +594,11 @@ def showExperimentalDataTogether():
     plt.figure(figsize=(10, 6)) # Preparation for plotting
     for i in experimentalFiles:
         dataFrame_Protein = pd.read_csv(i) # Save into a Pandas dataframe ALL the data for the current protein
-        plt.plot(dataFrame_Protein['Time (min)'], dataFrame_Protein['Rate of Change of Number of Protein Molecules (PM/min)'], marker='o') # Plot the "Rate of Change of Protein Molecules" data only
+        plt.plot(dataFrame_Protein['Time (min)'], dataFrame_Protein['Rate of Change of Number of Protein Molecules (PM per min)'], marker='o') # Plot the "Rate of Change of Protein Molecules" data only
 
     plt.title('Rate of Change of Protein Molecules vs Time')
     plt.xlabel('Time (min)')
-    plt.ylabel('Rate of Change of Protein Molecules (PM/min)')
+    plt.ylabel('Rate of Change of Protein Molecules (PM per min)')
     plt.grid(True)
     plt.legend(motorProteins_Names)
     plt.savefig("Rate_of_Change_of_Protein_Molecules.png")
@@ -581,7 +609,7 @@ def showExperimentalDataTogether():
 
 def showTheoreticalDataTogether():
 
-    theoreticalFiles = glob.glob("optimizedParameters_k*")
+    theoreticalFiles = glob.glob("optimizedParameters_*")
     motorProteins_Names = [file.replace("optimizedParameters_", "").replace(".csv", "") for file in theoreticalFiles]
 
     completeDataFrame = pd.DataFrame() # Initialize an empty DataFrame that will be filled in a loop
