@@ -11,6 +11,9 @@ from scipy.optimize import minimize
 import random
 import seaborn as sns
 
+import multiprocessing as mp
+import time
+import os
 
 # Part 1
 
@@ -26,53 +29,58 @@ optimizedParameters = list()
 # This function utilizes the images taken for an experiment of a kinesin motor protein
 def calculateMeanIntensity(paths):
     for i in range(0, len(paths)): 
-        # Load the image as a matrix
-        image_path = paths[i]
+        
+        image_path = paths[i] # Extract the path of each experimental image that was taken by the microscope
+        # Load each image as a matrix
         image_matrix = io.imread(image_path)
-        meanIntensity = image_matrix.mean()
-        meanIntensity_List.append(meanIntensity)
+        meanIntensity = image_matrix.mean() # Calculate the mean intensity value of the whole matrix 
+        meanIntensity_List.append(meanIntensity) # Save this mean intensity value to a Python list
 
 # This function utilizes 9 sample images to analyze the relationship between "Mean Intensity" and "Protein Concentration"
 def getConcentration(calibrationCurvePaths, mw_kda): # This function takes a list of image paths and molecular weight in kDa as arguments
     
     meanIntensity_CalibrationCurve_List = list()
     for i in range(0, len(calibrationCurvePaths)):
+        
+        image_path = calibrationCurvePaths[i] # Extract the path of each of the 9 sample images
         # Load the image as a matrix
-        image_path = calibrationCurvePaths[i]
         image_matrix = io.imread(image_path)
-        meanIntensity = image_matrix.mean()
-        meanIntensity_CalibrationCurve_List.append(meanIntensity) 
+        meanIntensity = image_matrix.mean() # Calculate the mean intensity value of the whole matrix 
+        meanIntensity_CalibrationCurve_List.append(meanIntensity) # Save this mean intensity value to a Python list
 
-    df = pd.DataFrame(meanIntensity_CalibrationCurve_List).reset_index() # Create a data frame 
-    df = df.rename(columns={"index":"Protein Concentration (microgram / milliliter)", 0:"Mean Intensity"})
+    df = pd.DataFrame(meanIntensity_CalibrationCurve_List).reset_index() # Create a data frame by adding the mean intensity values to 1 column
+    df = df.rename(columns={"index":"Protein Concentration (microgram / milliliter)", 0:"Mean Intensity"}) # Rename each of the 2 columns
     sampleConcentration_Values = [0, 2, 5, 10, 20, 40, 80, 160, 320]
-    df["Protein Concentration (microgram / milliliter)"] = sampleConcentration_Values
+    df["Protein Concentration (microgram / milliliter)"] = sampleConcentration_Values # Fill out the other column with the sample concentration values
 
-    # Get the equation (linear) of best fit for the Protein Concentration
+    # Get the equation (linear) of best fit for the Protein Concentration (nanograms/microliter)
     x = df["Protein Concentration (microgram / milliliter)"]
     y = df["Mean Intensity"]
 
-    slope, intercept = np.polyfit(x, y, 1) # Multiple return values is allowed in Python
+    slope, intercept = np.polyfit(x, y, 1) # The degree of the polynmial that will fit the data is 1. Multiple return values is allowed in Python
     
 
-    line_of_best_fit = slope * x + intercept
+    line_of_best_fit = slope * x + intercept # Create the line of best fit using the found slope and y-intercept.
+
     # Plot the data
     plt.figure(figsize=(10, 6))
     plt.plot(df["Protein Concentration (microgram / milliliter)"], df["Mean Intensity"], marker='o', linestyle='none', label='Data points')
     plt.plot(x, line_of_best_fit, label=f'Line of Best Fit: y = {slope:.2f}x + {intercept:.2f}', color='red')
     plt.title('Mean Intensity vs Protein Concentration')
-    plt.xlabel('Protein Concentration (microgram / milliliter)')
+    plt.xlabel('Protein Concentration (nanogram / microliter)')
     plt.ylabel('Mean Intensity')
     plt.grid(True)
     plt.legend()
     plt.show()
 
-    # Transform the dependent variables
+    """Transform the dependent variables. 
+    The linear model found earlier not only applies to the 9 sample images.
+    This linear model also applies to ANY experimental image taken by the microscope. """
     for i in range(0, len(meanIntensity_List)):
-        proteinConcentration = (meanIntensity_List[i] - intercept) / slope
-        proteinConcentration_List.append(proteinConcentration)
-        proteinConcentration_nM = ((proteinConcentration * 1e-3) / (mw_kda * 1e3)) * 1e9 # Convert to nM
-        proteinConcentration_nM_List.append(proteinConcentration_nM)
+        proteinConcentration = (meanIntensity_List[i] - intercept) / slope # Calculate each "protein concentration" value
+        proteinConcentration_List.append(proteinConcentration) # Save all "protein concentration" values to a Python List
+        proteinConcentration_nM = ((proteinConcentration * 1e-3) / (mw_kda * 1e3)) * 1e9 # Convert each "protein concentration" value to the units of nM
+        proteinConcentration_nM_List.append(proteinConcentration_nM) # Save all "protein concentration [nM]" values to another Python List
 
 def constructDataFrames(timeInterval):
     global meanIntensity_List
@@ -81,8 +89,9 @@ def constructDataFrames(timeInterval):
 
     minimumIntensityValue = min(meanIntensity_List)
     adjustedMeanIntensity_List = [x - minimumIntensityValue for x in meanIntensity_List] # Subtract the minimum mean intensity value from ALL values
-    meanIntensity_List = adjustedMeanIntensity_List
+    meanIntensity_List = adjustedMeanIntensity_List # Adjust the entire "Mean Intensity" experimental data. The purpose is that the experimental data starts from (0,0).
 
+    # ------ Do the same procedure as described before, to adjuste the "protein concentration" and "protein concentration [nM]" data ------
     minimumProteinConcentration = min(proteinConcentration_List)
     adjustedProteinConcentration_List = [x - minimumProteinConcentration for x in proteinConcentration_List]
     proteinConcentration_List = adjustedProteinConcentration_List
@@ -91,9 +100,11 @@ def constructDataFrames(timeInterval):
     adjustedProteinConcentration_List_nM = [x - minimumProteinConcentration_nM for x in proteinConcentration_nM_List]
     proteinConcentration_nM_List = adjustedProteinConcentration_List_nM    
 
-    df = pd.DataFrame(meanIntensity_List).reset_index() # Create a data frame 
-    df = df.rename(columns={"index":"Time (min)", 0:"Mean Intensity"})
-    df["Time (min)"] = df["Time (min)"] * timeInterval # Manipulate the "time" values
+    # Fill out a 2-column DataFrame
+    df = pd.DataFrame(meanIntensity_List).reset_index() # Create a data frame with 2 columns. One column contains all the "Mean Intensity" experimental data.
+    df = df.rename(columns={"index":"Time (min)", 0:"Mean Intensity"}) # Rename each of the 2 columns, ensuring proper units.
+    # Currently, the df["Time (min)"] column looks like this: 0, 1, 2, 3, ...   Therefore, we must manipulate this column.
+    df["Time (min)"] = df["Time (min)"] * timeInterval # Manipulate the "time" values, according to the time interval that the user decided.
 
     # Plot the data
     plt.figure(figsize=(10, 6))
@@ -104,9 +115,10 @@ def constructDataFrames(timeInterval):
     plt.grid(True)
     plt.show()
 
-    df2 = pd.DataFrame(proteinConcentration_List).reset_index()
-    df2 = df2.rename(columns={"index":"Time (min)", 0:"Protein Concentration (nanogram / microliter)"})
-    df2["Time (min)"] = df2["Time (min)"] * timeInterval # Manipulate the "time" values
+    # Fill out a 2-column DataFrame
+    df2 = pd.DataFrame(proteinConcentration_List).reset_index() # Create a data frame with 2 columns. One column contains all the "Protein Concentration" experimental data.
+    df2 = df2.rename(columns={"index":"Time (min)", 0:"Protein Concentration (nanogram / microliter)"}) # Rename each of the 2 columns, ensuring proper units.
+    df2["Time (min)"] = df2["Time (min)"] * timeInterval # Manipulate the "time" values, according to the time interval that the user decided.
     
     # Plot the data
     plt.figure(figsize=(10, 6))
@@ -117,9 +129,10 @@ def constructDataFrames(timeInterval):
     plt.grid(True)
     plt.show()
 
-    df3 = pd.DataFrame(proteinConcentration_nM_List).reset_index()
-    df3 = df3.rename(columns={"index":"Time (min)", 0:"Protein Concentration (nM)"})
-    df3["Time (min)"] = df3["Time (min)"] * timeInterval # Manipulate the "time" values
+    # Fill out a 2-column DataFrame
+    df3 = pd.DataFrame(proteinConcentration_nM_List).reset_index() # Create a data frame with 2 columns. One column contains all the "Protein Concentration [nM]" experimental data.
+    df3 = df3.rename(columns={"index":"Time (min)", 0:"Protein Concentration (nM)"}) # Rename each of the 2 columns, ensuring proper units.
+    df3["Time (min)"] = df3["Time (min)"] * timeInterval # Manipulate the "time" values, according to the time interval that the user decided.
 
     # Plot the data
     plt.figure(figsize=(10, 6))
@@ -132,15 +145,14 @@ def constructDataFrames(timeInterval):
 
 def getNumberOfProteinMolecules(dropletVolume, timeInterval, mw_kda):
     global numberOfProteinMolecules_List
-    proteinMass_List = [i * dropletVolume for i in proteinConcentration_List] # List comprehension technique
-    numberOfProteinMolecules_List = [(j * 6e14) / (mw_kda * 1e3) for j in proteinMass_List] # This expression was derived from several intermediate calculations
+    proteinMass_List = [i * dropletVolume for i in proteinConcentration_List] # The list comprehension technique was used to create a list with all the "Protein Mass" values.
+    numberOfProteinMolecules_List = [(j * 6e14) / (mw_kda * 1e3) for j in proteinMass_List] # This expression was derived from several mathematical steps. A new list is being created that has all the "Number of Protein Molecules" values.
 
-    df = pd.DataFrame(numberOfProteinMolecules_List).reset_index() # Create a data frame 
-    df = df.rename(columns={"index":"Time (min)", 0:"Number of Protein Molecules"})
-    df["Time (min)"] = df["Time (min)"] * timeInterval # Manipulate the "time" values
+    df = pd.DataFrame(numberOfProteinMolecules_List).reset_index() # Create a data frame with 2 columns. One column contains all the "Number of Protein Molecules" values.
+    df = df.rename(columns={"index":"Time (min)", 0:"Number of Protein Molecules"}) # Rename each of the 2 columns, ensuring proper units.
+    df["Time (min)"] = df["Time (min)"] * timeInterval # Manipulate the "time" values, according to the time interval that the user decided.
 
     # Plot the data
-
     plt.figure(figsize=(10, 6))
     plt.plot(df['Time (min)'], df['Number of Protein Molecules'], marker='o')
     plt.title('Number of Protein Molecules vs Time')
@@ -149,6 +161,7 @@ def getNumberOfProteinMolecules(dropletVolume, timeInterval, mw_kda):
     plt.grid(True)
     plt.show()
 
+    # Plot the same data again, but using a logarithmic scale to represent the "Number of Protein Molecules" data
     plt.figure(figsize=(10, 6))
     plt.plot(df['Time (min)'], df['Number of Protein Molecules'], marker='o')
     plt.title('Number of Protein Molecules vs Time')
@@ -163,15 +176,15 @@ def getRateOfChangeProteinMolecules(timeInterval):
     global timeValues_List
     global rateOfChangeProteinMolecules_List
     
-    p_vals = np.array(numberOfProteinMolecules_List) # Converts a Python list to a numpy array
+    p_vals = np.array(numberOfProteinMolecules_List) # Save all the "Number of Protein Molecules" values to a numpy array.
     length = len(numberOfProteinMolecules_List)
     maxTimeValue = (length - 1) * timeInterval 
-    t_vals = np.linspace(0, maxTimeValue, length) # Creates a numpy array
-    timeValues_List = t_vals.tolist()
+    t_vals = np.linspace(0, maxTimeValue, length) # Create a numpy array that has all the "time" values, in which the numerical derivative will be estimated. 
+    timeValues_List = t_vals.tolist() # Save all the "time" values in a list. This list will be used later on.
 
     # Estimate the numerical derivative of the number of protein molecules with respect to time
-    dp_dt = np.gradient(p_vals, t_vals)
-    rateOfChangeProteinMolecules_List = dp_dt.tolist()
+    dp_dt = np.gradient(p_vals, t_vals) # Use the 2 numpy arrays previously created
+    rateOfChangeProteinMolecules_List = dp_dt.tolist() # Save all the estimated derivative values into a Python list.
 
     # apply gaussian filter with sigma 2
     dp_dt = gaussian_filter1d(dp_dt, sigma=2)
@@ -186,8 +199,8 @@ def getRateOfChangeProteinMolecules(timeInterval):
     plt.grid(True)
     plt.show()
 
-def saveExperimentalData(experiment_fileName): # Saves the data to a CSV file
-    # save dataframes to csv files
+def saveExperimentalData(experiment_fileName): # This function saves all the experimental data to a CSV file
+
     dataFile = open(experiment_fileName, 'w', newline="")
     writerCSV = csv.writer(dataFile)
     headerRow = list()
@@ -197,8 +210,9 @@ def saveExperimentalData(experiment_fileName): # Saves the data to a CSV file
     headerRow.append("Protein Concentration (nM)")
     headerRow.append("Number of Protein Molecules")
     headerRow.append("Rate of Change of Number of Protein Molecules (PM per min)")
-    writerCSV.writerow(headerRow)
-    for i in range(0, len(meanIntensity_List)):
+    writerCSV.writerow(headerRow) # Add the header row to the CSV file.
+
+    for i in range(0, len(meanIntensity_List)): # Fill all of the columns with the experimental data.
         dataRow = list()
         dataRow.append(timeValues_List[i])
         dataRow.append(meanIntensity_List[i])
@@ -206,54 +220,66 @@ def saveExperimentalData(experiment_fileName): # Saves the data to a CSV file
         dataRow.append(proteinConcentration_nM_List[i])
         dataRow.append(numberOfProteinMolecules_List[i])
         dataRow.append(rateOfChangeProteinMolecules_List[i])
-        writerCSV.writerow(dataRow)
+        writerCSV.writerow(dataRow) # Below the header row, add all the experimental data to the CSV file.
     dataFile.close()
 
 
 # Part 2
 
-def loadExperimentalData(experiment_file_name):
+""" This function should only be used in the 2nd wrapper function called "runTheoreticalAnalysis()".
+    By using this function, you should already have all the experimental data saved in .csv files.
+    This means that this function will only store the experimental data that will later on be compared to theoretical data. """
+
+def loadExperimentalData(experiment_file_name): 
     global timeValues_List, proteinConcentration_nM_List 
     
-    experimentalData_df = pd.read_csv(experiment_file_name) # Load the csv data into a Pandas DataFrame
-    column_TimeValues = experimentalData_df["Time (min)"]
-    timeValues_List = column_TimeValues.tolist()
-    column_ProteinConcentration_nM = experimentalData_df["Protein Concentration (nM)"]
-    proteinConcentration_nM_List = column_ProteinConcentration_nM.tolist()
+    experimentalData_df = pd.read_csv(experiment_file_name) # Load all the experimental data of the .csv file, into a Pandas DataFrame.
+    column_TimeValues = experimentalData_df["Time (min)"] # Only extract the "time" values from the DataFrame.
+    timeValues_List = column_TimeValues.tolist() # Store all the "time" values in a list. To do so, convert from a numpy array to a list
+    column_ProteinConcentration_nM = experimentalData_df["Protein Concentration (nM)"] # Only extract the "Protein Concentration (nM)" values from the DataFrame.
+    proteinConcentration_nM_List = column_ProteinConcentration_nM.tolist() # Store all the "Protein Concentration (nM)" values in a list. To do so, convert from a numpy array to a list
    
 
-# Calculate the [R_p D] complex using the equation in the paper's supplementary information. 
-def calculate_RpD2(R_p, D, k_TX): # Accept parameters to calculate the [R_p D] complex
+# This function calculate the [R_p D] complex 
+def calculate_RpD2(R_p, D, k_TX): # 3 parameters are needed to calculate the [R_p D] complex: protein production rate, DNA concentration, and transcription rate
     discriminant = (R_p + D + k_TX)**2 - 4 * R_p * D
     if discriminant < 0:
         return 1e-6 # Return a small positive value if the discriminant is negative
     else:
-        return 0.5 * (R_p + D + k_TX - np.sqrt(discriminant))
+        return 0.5 * (R_p + D + k_TX - np.sqrt(discriminant)) # Else return the actual [R_p D] complex equation
 
-# Define the differential equation for protein concentration
+# Define the ordinary differential equation (ODE) that describes protein concentration dynamics
 def dPdt(T, P, Q, S, tau_0, tau_f, k3, k11): # Not only accept the variables T and P. Also, accept parameters that will be treated as constants in the ODE.
     if T > tau_0 + tau_f:
-        return Q * (1 - np.exp(-(T - tau_0 - tau_f) / k3)) - (S * P) / (k11 + P)
+        return Q * (1 - np.exp(-(T - tau_0 - tau_f) / k3)) - (S * P) / (k11 + P) # Return the ODE in its most simplied form, ready to be solved numerically.
     else:
-        return 0 
+         """If the current "time" value is not greater than the sum of both of the time delay values, 
+         this means that are no proteins being expressed. Hence, if this is the case, the rate 
+         of change of the protein concentration with respect to time is 0.  """
+        
+         return 0 
+        
 
 def solve_ODE(params, N_p, N_m, D):
 
-    k_TL, k_TX, R_p, tau_m, K_TL, R, k_deg, X_p, K_p, tau_0, tau_f = params # In Python, this is a way to define variables, given a list of values. Only 1 line is required
+    k_TL, k_TX, R_p, tau_m, K_TL, R, k_deg, X_p, K_p, tau_0, tau_f = params 
 
-    RpD = calculate_RpD2(R_p, D, k_TX) # For simplicity purposes, we calculated [R_p D] complex using a function
+    RpD = calculate_RpD2(R_p, D, k_TX) # For simplicity purposes, the [R_p D] complex was previously calculated using a function
+    
+    # Condense many constant terms into single variables. This is done for simplicity purposes.
     Q = (k_TL * k_TX * RpD * tau_m) / (N_p * (1 + K_TL / R) * N_m)  
     S = k_deg * X_p
     k3 = tau_m
     k11 = K_p
 
     # Time ranges from T = 0 to T = 5000 seconds
-    T = np.linspace(0, 5000, len(proteinConcentration_nM_List)) # Same size as the experimental data of the protein concentration
+    T = np.linspace(0, 5000, len(proteinConcentration_nM_List)) # This has the same size as the experimental data of "Protein Concentration [nM]""
 
     P_initial = 0  # At t = 0, the protein concentration P(0) = 0
 
-    # All of the constants such as Q, S, k3... need to be passed as arguments into the solve_ivp()function
-    p = solve_ivp(dPdt, [T[0], T[-1]], [P_initial], t_eval=T, args=(Q, S, tau_0, tau_f, k3, k11), method ="LSODA", rtol=1e-6, atol=1e-8) # The "LSODA" method will be used to numerically solve the ODE
+    """All of the constants such as Q, S, k3... need to be passed as arguments into the solve_ivp() function
+    "LSODA" will be the first method to be used to numerically solve the ODE"""
+    p = solve_ivp(dPdt, [T[0], T[-1]], [P_initial], t_eval=T, args=(Q, S, tau_0, tau_f, k3, k11), method ="LSODA", rtol=1e-6, atol=1e-8)
     
     # If LSODA fails, the BDF method will be used
     if p.status != 0:
@@ -269,35 +295,45 @@ def solve_ODE(params, N_p, N_m, D):
 
     # Handle the case if the "Radau" method also fails
     if p.status != 0:
-        raise RuntimeError("ODE solver failed for all attempted methods (LSODA, BDF, RK45, Radau).")
+        raise RuntimeError("The ODE could not be solved with none of the attempted methods: LSODA, BDF, RK45, or Radau")
     
-    return p.y[0]
+    return p.y[0] # Return all the theoretical "Protein Concentration [nM]" values, by using this specific syntax.
 
-# The objective function uses the method of "Sum of Squared Errors (SSE)"
+# This objective function uses the method of "Sum of Squared Errors (SSE)"
 def objective_function(params, N_p, N_m, D):
-    pModel = solve_ODE(params, N_p, N_m, D)
-    return np.sum((proteinConcentration_nM_List-pModel)**2)
+    pModel = solve_ODE(params, N_p, N_m, D)  # Extract all the theoretical "Protein Concentration [nM]" values
+    """Apply the definition of the SSE method. 
+    To do so, use both the experimental and theoretical values of "Protein Concentration [nM]" """
+    return np.sum((proteinConcentration_nM_List-pModel)**2) 
 
+# This function uses the PROVIDED inital guesses to find the optimized parameters only 1 time.
 def optimize_parameters(initial_guesses, N_p, N_m, D):
     global optimizedParameters
     # The lower bounds of tau_m, R, and K_p are a very small positive number (not 0), to avoid having issues of dividing by 0
     bounds = [(0, 100), (0, 100), (0, 500), (1e-6, 5000), (0, 100), (1e-6, 1e3), (0, 100), (0, 500), (1e-6, 100), (0, 10), (0, 2000)]
-    result = minimize(objective_function, initial_guesses, args=(N_p, N_m, D), method='TNC', bounds=bounds)  # "L-BFGS-B" is a popular method to minimize an objective function. "TNC" is another method to minimize an objective function
-    optimizedParameters = result.x  #  Since "result" is an object, we need to access a certain attribute of "result" to extract the optimized parameters
+    """  'TNC' is a popular method to minimize an objective function. It will be used for this scenario.
+    'L-BFGS-B' is another method to minimize an objective function and could be used if the "TNC" method fails.
+    Initial guesses are required to use any of the 2 methods. Bounds are optional, but for this scenario they are required. """
+    result = minimize(objective_function, initial_guesses, args=(N_p, N_m, D), method='TNC', bounds=bounds)  
+    optimizedParameters = result.x  # Since "result" is an object, we need to access a certain attribute of "result" to extract the optimized parameters
 
+# This function uses RANDOM initial guesses to find optimized parameters many times.
 def optimize_parameters_many_times(initial_guesses, N_p, N_m, D):
-    bounds = [(0, 100), (0, 100), (0, 500), (1e-6, 5000), (0, 100), (1e-6, 1e3), (0, 100), (0, 500), (1e-6, 100), (0, 10), (0, 2000)]
-    result = minimize(objective_function, initial_guesses, args=(N_p, N_m, D), method='TNC', bounds=bounds)  # "L-BFGS-B" is a popular method to minimize an objective function. "TNC" is another method to minimize an objective function
-    currentOptimizedParameters = result.x  #  Since "result" is an object, we need to access a certain attribute of "result" to extract the optimized parameters
-    SSE = result.fun
-    return currentOptimizedParameters, SSE # Return the optimized parameters and the Sum of Squared Errors value
+    bounds = [(0, 100), (0, 100), (0, 500), (1e-6, 5000), (0, 100), (1e-6, 1e3), (0, 100), (0, 500), (1e-6, 100), (0, 10), (0, 2000)] # Use the same bounds defined before
+    print("El programa PASO AQUI!")
+    result = minimize(objective_function, initial_guesses, args=(N_p, N_m, D), method='TNC', bounds=bounds)  
+    currentOptimizedParameters = result.x 
+    SSE = result.fun # Extract the Sum of Squared Errors (SSE) value, by using this specific syntax.
+    return currentOptimizedParameters, SSE # Return the optimized parameters and the SSE value
 
-# Here, the algorithm to optimize parameters is only used once. This function shows a demo graph
+"""This function shows the optimized parameters that were calculated using the PROVIDED initial guesses.
+    Also, this function uses the optimized parameters to generate the theoretical curve.
+    Finally, both the theoretical curve and the experimental curve are shown in the same graph. """
 def showOptimizedParameters(N_p, N_m, D): 
 
     global optimizedParameters
     # Print the optimized parameters
-    print("Optimized parameters:")
+    print("These are the optimized parameters that were calculated using the provided initial guesses:")
     print("k_TL:", optimizedParameters[0])
     print("k_TX:", optimizedParameters[1])
     print("R_p:", optimizedParameters[2])
@@ -310,11 +346,11 @@ def showOptimizedParameters(N_p, N_m, D):
     print("tau_0:", optimizedParameters[9])
     print("tau_f:", optimizedParameters[10])
 
-    optimizedModel = solve_ODE(optimizedParameters, N_p, N_m, D)
+    optimizedModel = solve_ODE(optimizedParameters, N_p, N_m, D) # Generate the theoretical curve, by using the optimized parameters to solve the ODE. 
     T = np.linspace(0, 5000, len(proteinConcentration_nM_List)) # Same size as the experimental data of the protein concentration
-    plt.figure(figsize=(10, 6))  # Clear the figure before plotting
+    plt.figure(figsize=(10, 6))  
     plt.plot(T, proteinConcentration_nM_List, label='Experimental Curve', linestyle='--', color='orange')
-    plt.plot(T, optimizedModel, label='Theoretical Curve') # We need to access the "y" values from the object that stores the solution to the ODE
+    plt.plot(T, optimizedModel, label='Theoretical Curve') 
     plt.title('Protein Concentration vs. Time')
     plt.xlabel('Time (seconds)')
     plt.ylabel('Protein Concentration (nM)')
@@ -322,6 +358,7 @@ def showOptimizedParameters(N_p, N_m, D):
     plt.grid(True)
     plt.show()
 
+#
 def runParameterOptimization(initial_guesses, N_p, N_m, D, theory_file_name):
 
     global optimizedParameters
@@ -329,16 +366,24 @@ def runParameterOptimization(initial_guesses, N_p, N_m, D, theory_file_name):
     parameter_names = ["SSE Value", "k_TL", "k_TX", "R_p", "tau_m", "K_TL", "R", "k_deg", "X_p", "K_p", "tau_0", "tau_f", "N_p", "N_m", "D"]
     parameters_df = pd.DataFrame(columns=parameter_names) # Initialize a DataFrame, by providing the names of all the columns
 
-    bounds = [(0, 100), (0, 100), (0, 500), (1e-6, 5000), (0, 100), (1e-6, 1e3), (0, 100), (0, 500), (1e-6, 100), (0, 10), (0, 2000)] # Same bounds used for optimizing the model
+    # It is important that the bounds to generate the RANDOM initial guesses are the same bounds used for finding the optimal parameters
+    bounds = [(0, 100), (0, 100), (0, 500), (1e-6, 5000), (0, 100), (1e-6, 1e3), (0, 100), (0, 500), (1e-6, 100), (0, 10), (0, 2000)] 
     knownParameters = [N_p, N_m, D]
-    parametersRangeMatrix = [] # This will become a matrix
+    #parametersRangeMatrix = [] # This will become a matrix
     for i in range(100):
 
         try:
             print(i)
-            #Create a list of 11 random float values. All values are within the lower and upper bounds previously set
+            """ The following line generates 11 random float values. Each of the PROVIDED initial guesses is used as the
+            mean value of a normal distribution. The standard deviation (SD) of this normal distribution is proportional
+            to each of the PROVIDED initial guesses (in this case, the SD is always 10% the value of each PROVIDED initial guess.)
+            By following the process described before, RANDOM initial guesses are being created on every iteration."""
             random_initial_guesses = [np.clip(np.random.normal(loc=guess, scale=guess*0.1), low, high) for guess, (low, high) in zip(initial_guesses, bounds)]
-            currentOptimizedParameters, SSE= optimize_parameters_many_times(random_initial_guesses, N_p, N_m, D) # Calculate new values for the optimal parameters
+            currentOptimizedParameters, SSE= optimize_parameters_many_times(random_initial_guesses, N_p, N_m, D) # Calculate new values for the optimized parameters, and extract the SSE value of this new model.
+            print("Current Optimized Parameters:", currentOptimizedParameters)
+            print("\n")
+            print("SSE:", SSE)
+            print("\n")
             currentOptimizedParameters_List = currentOptimizedParameters.tolist() # Convert a "np.ndarray" object to a Python list
             SSE_value = [SSE] # This is a list containing 1 element
             newRow = SSE_value + currentOptimizedParameters_List + knownParameters # Combine 3 Python lists into a single list. This exact order is very important.
@@ -350,7 +395,7 @@ def runParameterOptimization(initial_guesses, N_p, N_m, D, theory_file_name):
                 visualizeModel(optimizedParameters, N_p, N_m, D)
             """
         except IndexError:
-            print("The optimized parameters could not be found using the following random initial guesses:   ")
+            print("The optimized parameters could not be found using the following RANDOM initial guesses:")
             print("\n")
             print(random_initial_guesses)
             continue # Skip a bad set of optimized parameters that were calculated based on the random intial guesses
@@ -384,14 +429,14 @@ def showBestAndWorstModel(theory_file_name, N_p, N_m, D):
     minSSE_row_without_SSE = minSSE_row[minSSE_row != minSSE_Value] # Extract the other values found in the same row (NOT including the SSE value)
     minSSE_row_with_optimized_parameters = minSSE_row_without_SSE[:-3]
     print()
-    print("This is the model with the least value of SSE (this is the best found model):")
+    print("This model was calculated using RANDOM initial guesses and has the least value of SSE (this is the best found model):")
     visualizeModel(minSSE_row_with_optimized_parameters, N_p, N_m, D)
 
     maxSSE_row = theory_df.loc[index_maxSSE] # Complete row (this is still not useful)
     maxSSE_row_without_SSE = maxSSE_row[maxSSE_row != maxSSE_Value] # Extract the other values found in the same row (NOT including the SSE value)
     maxSSE_row_with_optimized_parameters = maxSSE_row_without_SSE[:-3]
     print()
-    print("This is the model with the greatest value of SSE (this is the worst found model):")
+    print("This model was calculated using RANDOM initial guesses and has the greatest value of SSE (this is the worst found model):")
     visualizeModel(maxSSE_row_with_optimized_parameters, N_p, N_m, D)
 
 
@@ -495,7 +540,25 @@ def runFullAnalysis(paths, calibration_curve_paths, time_interval, droplet_volum
     visualizeModel(optimizedParameters, N_p, N_m, D)
 
     # Part 3
-    runParameterOptimization(initial_guesses, N_p, N_m, D, theory_file_name) 
+
+    """ Multiprocessing will be used to carry out the optimization of the parameters 100 times.
+        This will signifcantly reduce the execution time of the program."""
+    # ----------------------------------------------------------------
+    num_processes = os.cpu_count()  # Get the number of available CPU cores
+
+    # Timing multiprocessing
+    start_time = time.time()
+    jobs = []
+    for _ in range(num_processes):
+        # The runParameterOptimization(initial_guesses, N_p, N_m, D, theory_file_name) gets called here
+        process = mp.Process(target=runParameterOptimization, args=(initial_guesses, N_p, N_m, D, theory_file_name))
+        jobs.append(process)
+        process.start()
+    for job in jobs:
+        job.join()
+    multiprocessing_time = time.time() - start_time
+    print(f'Multiprocessing time: {multiprocessing_time:.4f} seconds')
+    # ----------------------------------------------------------------
     showBestAndWorstModel(theory_file_name, N_p, N_m, D)
     
     
@@ -521,7 +584,25 @@ def runTheoreticalAnalysis(experiment_file_name, N_p, N_m, D, initial_guesses, t
     visualizeModel(optimizedParameters, N_p, N_m, D)
 
     # Part 3
-    runParameterOptimization(initial_guesses, N_p, N_m, D, theory_file_name) 
+
+    """ Multiprocessing will be used to carry out the optimization of the parameters 100 times.
+        This will signifcantly reduce the execution time of the program."""
+    # ----------------------------------------------------------------
+    num_processes = os.cpu_count()  # Get the number of available CPU cores
+
+    # Timing multiprocessing
+    start_time = time.time()
+    jobs = []
+    for _ in range(num_processes):
+        # The runParameterOptimization(initial_guesses, N_p, N_m, D, theory_file_name) gets called here
+        process = mp.Process(target=runParameterOptimization, args=(initial_guesses, N_p, N_m, D, theory_file_name))
+        jobs.append(process)
+        process.start()
+    for job in jobs:
+        job.join()
+    multiprocessing_time = time.time() - start_time
+    print(f'Multiprocessing time: {multiprocessing_time:.4f} seconds')
+    # ----------------------------------------------------------------
     showBestAndWorstModel(theory_file_name, N_p, N_m, D)
     
 
