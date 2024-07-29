@@ -203,7 +203,7 @@ def saveExperimentalData(experiment_fileName): # This function saves all the exp
     headerRow = list()
     headerRow.append("Time (min)")
     headerRow.append("Mean Intensity (A.U.)")
-    headerRow.append("Protein Concentration (ng per µL)")
+    headerRow.append("Protein Concentration (nanograms per microliter)")
     headerRow.append("Protein Concentration (nM)")
     headerRow.append("Number of Protein Molecules")
     headerRow.append("Rate of Change of Number of Protein Molecules (PM per min)")
@@ -230,7 +230,7 @@ def saveExperimentalData(experiment_fileName): # This function saves all the exp
 def loadExperimentalData(experiment_file_name): 
     global timeValues_List, proteinConcentration_nM_List 
     
-    experimentalData_df = pd.read_csv(experiment_file_name) # Load all the experimental data of the .csv file, into a Pandas DataFrame.
+    experimentalData_df = pd.read_csv(experiment_file_name, encoding='latin1') # Load all the experimental data of the .csv file, into a Pandas DataFrame.
     column_TimeValues = experimentalData_df["Time (min)"] # Only extract the "time" values from the DataFrame.
     timeValues_List = column_TimeValues.tolist() # Store all the "time" values in a list. To do so, convert from a numpy array to a list
     column_ProteinConcentration_nM = experimentalData_df["Protein Concentration (nM)"] # Only extract the "Protein Concentration (nM)" values from the DataFrame.
@@ -329,7 +329,8 @@ def showOptimizedParameters(N_p, N_m, D):
 
     global optimizedParameters
     # Print the optimized parameters
-    print("These are the optimized parameters that were calculated using the provided initial guesses:")
+    print("The theoretical model that best fits the experimental data has the following parameters. These optimized parameters were calculated using the provided initial guesses:")
+    print()
     print("k_TL:", optimizedParameters[0])
     print("k_TX:", optimizedParameters[1])
     print("R_p:", optimizedParameters[2])
@@ -344,6 +345,8 @@ def showOptimizedParameters(N_p, N_m, D):
 
     optimizedModel = solve_ODE(optimizedParameters, N_p, N_m, D) # Generate the theoretical curve, by using the optimized parameters to solve the ODE. 
     T = np.linspace(0, 5000, len(proteinConcentration_nM_List)) # Same size as the experimental data of the protein concentration
+    print()
+    print("This is the model whose optimized parameters were found using the provided initial guesses:")
     plt.figure(figsize=(10, 6))  
     plt.plot(T, proteinConcentration_nM_List, label='Experimental Curve', linestyle='--', color='orange')
     plt.plot(T, optimizedModel, label='Theoretical Curve') 
@@ -354,7 +357,10 @@ def showOptimizedParameters(N_p, N_m, D):
     plt.grid(True)
     plt.show()
 
-#
+""" With a loop, this function generates RANDOM initial guesses and then uses them to find the optimized parameters that make
+    the theoretical model fit with the experimental curve. The SSE value of each of the 100 theoretical models also gets calculated. 
+    In each iteration of the loop, a DataFrame saves the optimized parameters, known parameters, and the SSE value of the found theoretical model.
+    Finally the entire DataFrame gets saved to a .csv file. """
 def runParameterOptimization(initial_guesses, N_p, N_m, D, theory_file_name):
 
     global optimizedParameters
@@ -366,10 +372,14 @@ def runParameterOptimization(initial_guesses, N_p, N_m, D, theory_file_name):
     bounds = [(0, 100), (0, 100), (0, 500), (1e-6, 5000), (0, 100), (1e-6, 1e3), (0, 100), (0, 500), (1e-6, 100), (0, 10), (0, 2000)] 
     knownParameters = [N_p, N_m, D]
     #parametersRangeMatrix = [] # This will become a matrix
-    for i in range(100):
+
+    print("RANDOM initial guesses will now be used to calculate the parameters that make the theoretical model best fit the experimental data.")
+    print()
+    for i in range(10):
 
         try:
-            print(i)
+            print(i + 1, " sets of optimized parameters have been found so far")
+
             """ The following line generates 11 random float values. Each of the PROVIDED initial guesses is used as the
             mean value of a normal distribution. The standard deviation (SD) of this normal distribution is proportional
             to each of the PROVIDED initial guesses (in this case, the SD is always 10% the value of each PROVIDED initial guess.)
@@ -380,12 +390,13 @@ def runParameterOptimization(initial_guesses, N_p, N_m, D, theory_file_name):
             SSE_value = [SSE] # This is a list containing 1 element
             newRow = SSE_value + currentOptimizedParameters_List + knownParameters # Combine 3 Python lists into a single list. This exact order is very important.
             parameters_df.loc[len(parameters_df)] = newRow # Add a new row of optimized parameters to the DataFrame. Also add the SSE value.
-            """
-            if (i % 33 == 0):
+            
+            if (i % 3 == 0):
                 optimizedParameters = np.array([]) # Clear the contents of the global variable
                 optimizedParameters = currentOptimizedParameters
+                print("This is an example of a model that has optimal parameters. These optimal parameters were found using RANDOM initial guesses:")
                 visualizeModel(optimizedParameters, N_p, N_m, D)
-            """
+            
         except IndexError:
             print("The optimized parameters could not be found using the following RANDOM initial guesses:")
             print("\n")
@@ -404,51 +415,76 @@ def runParameterOptimization(initial_guesses, N_p, N_m, D, theory_file_name):
     """
 
     saveTheoreticalData(parameters_df, theory_file_name) # Save the DataFrame to a .csv file
-    
+
+# This function saves the content of a DataFrame to a .csv file
 def saveTheoreticalData(theory_df, theory_file_name):
     theory_df.to_csv(theory_file_name, index=False)
 
 
 def showBestAndWorstModel(theory_file_name, N_p, N_m, D):
-    theory_df = pd.read_csv(theory_file_name)
-    minSSE_Value = theory_df["SSE Value"].min()
-    maxSSE_Value = theory_df["SSE Value"].max()
 
-    index_minSSE = theory_df[theory_df["SSE Value"] == minSSE_Value].index[0]
-    index_maxSSE = theory_df[theory_df["SSE Value"] == maxSSE_Value].index[0]
+    theory_df = pd.read_csv(theory_file_name) # Load the optimized parameters, known parameters, and SSE values of each of the 100 theoretical models
+    minSSE_Value = theory_df["SSE Value"].min() # Find the least SSE value out of the 100 SSE values
+    maxSSE_Value = theory_df["SSE Value"].max() # Find the greatest SSE value out of the 100 SSE values
 
-    minSSE_row = theory_df.loc[index_minSSE] # Complete row (this is still not useful)
+    index_minSSE = theory_df[theory_df["SSE Value"] == minSSE_Value].index[0] # Find the theoretical model (which corresponds to a certain row of the .csv file) that had the least SSE value
+    index_maxSSE = theory_df[theory_df["SSE Value"] == maxSSE_Value].index[0] # Find the theoretical model (which corresponds to a certain row of the .csv file) that had the greatest SSE value
+
+    minSSE_row = theory_df.loc[index_minSSE] # Complete row where the desired SSE value belongs to 
     minSSE_row_without_SSE = minSSE_row[minSSE_row != minSSE_Value] # Extract the other values found in the same row (NOT including the SSE value)
-    minSSE_row_with_optimized_parameters = minSSE_row_without_SSE[:-3]
+    minSSE_row_with_optimized_parameters = minSSE_row_without_SSE[:-3] # Only extract the optimized parameters (the known parameters are being ignored)
     print()
-    print("This model was calculated using RANDOM initial guesses and has the least value of SSE (this is the best found model):")
+    print("This model was calculated using RANDOM initial guesses and has the least value of SSE (this is the BEST found model):")
     visualizeModel(minSSE_row_with_optimized_parameters, N_p, N_m, D)
 
-    maxSSE_row = theory_df.loc[index_maxSSE] # Complete row (this is still not useful)
-    maxSSE_row_without_SSE = maxSSE_row[maxSSE_row != maxSSE_Value] # Extract the other values found in the same row (NOT including the SSE value)
-    maxSSE_row_with_optimized_parameters = maxSSE_row_without_SSE[:-3]
+    # Print the optimized parameters of the model
+    print("The values of the optimized parameters of the BEST found model were as follows:")
     print()
-    print("This model was calculated using RANDOM initial guesses and has the greatest value of SSE (this is the worst found model):")
+    print("k_TL:", minSSE_row_with_optimized_parameters.iloc[0])
+    print("k_TX:", minSSE_row_with_optimized_parameters.iloc[1])
+    print("R_p:", minSSE_row_with_optimized_parameters.iloc[2])
+    print("tau_m:", minSSE_row_with_optimized_parameters.iloc[3])
+    print("K_TL:", minSSE_row_with_optimized_parameters.iloc[4])
+    print("R:", minSSE_row_with_optimized_parameters.iloc[5])
+    print("k_deg:", minSSE_row_with_optimized_parameters.iloc[6])
+    print("X_p:", minSSE_row_with_optimized_parameters.iloc[7])
+    print("K_p:", minSSE_row_with_optimized_parameters.iloc[8])
+    print("tau_0:", minSSE_row_with_optimized_parameters.iloc[9])
+    print("tau_f:", minSSE_row_with_optimized_parameters.iloc[10])
+
+    maxSSE_row = theory_df.loc[index_maxSSE] # Complete row where the desired SSE value belongs to 
+    maxSSE_row_without_SSE = maxSSE_row[maxSSE_row != maxSSE_Value] # Extract the other values found in the same row (NOT including the SSE value)
+    maxSSE_row_with_optimized_parameters = maxSSE_row_without_SSE[:-3] # Only extract the optimized parameters (the known parameters are being ignored)
+    print()
+    print("This model was calculated using RANDOM initial guesses and has the greatest value of SSE (this is the WORST found model):")
     visualizeModel(maxSSE_row_with_optimized_parameters, N_p, N_m, D)
+
+     # Print the optimized parameters of the model
+    print("The values of the optimized parameters of the WORST found model were as follows:")
+    print()
+    print("k_TL:", minSSE_row_with_optimized_parameters.iloc[0])
+    print("k_TX:", minSSE_row_with_optimized_parameters.iloc[1])
+    print("R_p:", minSSE_row_with_optimized_parameters.iloc[2])
+    print("tau_m:", minSSE_row_with_optimized_parameters.iloc[3])
+    print("K_TL:", minSSE_row_with_optimized_parameters.iloc[4])
+    print("R:", minSSE_row_with_optimized_parameters.iloc[5])
+    print("k_deg:", minSSE_row_with_optimized_parameters.iloc[6])
+    print("X_p:", minSSE_row_with_optimized_parameters.iloc[7])
+    print("K_p:", minSSE_row_with_optimized_parameters.iloc[8])
+    print("tau_0:", minSSE_row_with_optimized_parameters.iloc[9])
+    print("tau_f:", minSSE_row_with_optimized_parameters.iloc[10])
 
 
 # Part 3
 
-# Calculate the [R_p D] complex using the equation in the paper's supplementary information. 
-def calculate_RpD(R_p, D, K_TX): # Accept parameters to calculate the [R_p D] complex
-    return 0.5 * (R_p + D + K_TX - np.sqrt((R_p + D + K_TX)**2 - 4 * R_p * D))
-
-# Define the differential equation for protein concentration
-def dPdt(T, P, Q, S, tau_0, tau_f, k3, k11): # Not only accept the variables T and P. Also, accept parameters that will be treated as constants in the ODE.
-    if T > tau_0 + tau_f:
-        return Q * (1 - np.exp(-(T - tau_0 - tau_f) / k3)) - (S * P) / (k11 + P)
-    else:
-        return 0 
-
-# Create a function to plot the oscillators with given parameters
+"""Create a function to plot the experimental curve, as well as the theoretical curve in the same graph.
+   The theoretical curve will be constructed using the given parameters. Very importantly, this graph
+   will have interactive sliders, so that users can modify the values of the parameters as they want. 
+   So, this function will be called later on, so that interactive sliders can be added to this graph. """
 def plot_proteinConcentration(k_TL, k_TX, R_p, D, tau_m, N_p, K_TL, R, N_m, k_deg, X_p, K_p, tau_0, tau_f): #Parameters that will be able to be modified by the sliders
-    
-    RpD = calculate_RpD(R_p, D, k_TX) # For simplicity purposes, calculate [R_p D] complex using a function
+    global proteinConcentration_nM_List
+
+    RpD = calculate_RpD2(R_p, D, k_TX) # For simplicity purposes, calculate [R_p D] complex using a function
     Q = (k_TL * k_TX * RpD * tau_m) / (N_p * (1 + K_TL / R) * N_m)  
     S = k_deg * X_p
     k3 = tau_m
@@ -472,15 +508,15 @@ def plot_proteinConcentration(k_TL, k_TX, R_p, D, tau_m, N_p, K_TL, R, N_m, k_de
 
     # If BDF fails, then the "Radau" method will be used
     if p.status != 0:
-         p = solve_ivp(dPdt, [T[0], T[-1]], [P_initial], t_eval=T, args=(Q, S, tau_0, tau_f, k3, k11), method='Radau', rtol=1e-6, atol=1e-8)
+        p = solve_ivp(dPdt, [T[0], T[-1]], [P_initial], t_eval=T, args=(Q, S, tau_0, tau_f, k3, k11), method='Radau', rtol=1e-6, atol=1e-8)
 
     # Handle the case if the "Radau" method also fails
     if p.status != 0:
         raise RuntimeError("ODE solver failed for all attempted methods (LSODA, BDF, RK45, Radau).")
     
-    plt.figure(figsize=(10, 6))  # Clear the figure before plotting
+    plt.figure(figsize=(10, 6)) 
     plt.plot(T, proteinConcentration_nM_List, label='Experimental Curve', linestyle='--', color='orange')
-    plt.plot(T, p.y[0], label='Theoretical Curve') # We need to access the "y" values from the object 'p' we created before
+    plt.plot(T, p.y[0], label='Theoretical Curve') 
     plt.title('Protein Concentration vs. Time')
     plt.xlabel('Time (seconds)')
     plt.ylabel('Protein Concentration (nM)')
@@ -490,21 +526,25 @@ def plot_proteinConcentration(k_TL, k_TX, R_p, D, tau_m, N_p, K_TL, R, N_m, k_de
 
 def visualizeModel(optimizedParameters, N_p, N_m, D):
 
-    k_TL, k_TX, R_p, tau_m, K_TL, R , k_deg, X_p, K_p, tau_0, tau_f = optimizedParameters
+    k_TL, k_TX, R_p, tau_m, K_TL, R , k_deg, X_p, K_p, tau_0, tau_f = optimizedParameters # Load the optimized parameters
 
-    # Create interactive sliders for the parameters used to calculate the protein concentration
-    style = {'description_width': '300px'}  # Adjust the width as needed
-   
+    # Create interactive sliders to dynamically adjust the values of the parameters used to calculate the protein concentration [nM]
+    style = {'description_width': '300px'}  # Adjust the width of the descriptions as needed
+    
+    """Set the default value of each of the sliders to the value of each of the OPTIMIZED PARAMETERS. 
+    Also, establish the minimum and maximum values that the sliders can take. Moreover, establish 
+    by how much can each of the sliders be modified ('step' option). Finally, establish additional 
+    options, such as the width of the sliders. """
     interact(plot_proteinConcentration, 
             k_TL=FloatSlider(value=k_TL , min=0.0, max=100, step=0.1, description='k_TL (amino acids/s)', layout=Layout(width='900px'), style=style, readout_format='.6f'),
             k_TX=FloatSlider(value=k_TX , min=0.0, max=100, step=0.1, description='k_TX (rNTP/s)', layout=Layout(width='900px'), style=style, readout_format='.6f'),
             R_p=FloatSlider(value=R_p, min=0.0, max=500, step=0.1, description='RNA polymerase concentration (nM)', layout=Layout(width='900px'), style=style, readout_format='.6f'), 
-            D=FloatSlider(value=D, min=0.0, max=1000, step=1, description='DNA concentration (nM)', layout=Layout(width='900px'), style=style), ## We know for sure the value of DNA concentration
+            D=FloatSlider(value=D, min=0.0, max=1000, step=1, description='DNA concentration (nM)', layout=Layout(width='900px'), style=style), 
             tau_m=FloatSlider(value=tau_m , min=1e-6, max=5000, step=0.1, description='mRNA lifetime (seconds)', layout=Layout(width='900px'), style=style, readout_format='.6f'),
-            N_p=FloatSlider(value=N_p, min=0.0, max=10000, step=1, description='protein length (amino acids)', layout=Layout(width='900px'), style=style, readout_format='.6f'), ## We know for sure the number of aminoacids
+            N_p=FloatSlider(value=N_p, min=0.0, max=10000, step=1, description='protein length (amino acids)', layout=Layout(width='900px'), style=style, readout_format='.6f'),
             K_TL = FloatSlider(value=K_TL, min=0.0, max=100, step=0.1, description='Michaelis-Menten constant for translation (nM)', layout=Layout(width='900px'), style=style, readout_format='.6f'),
             R=FloatSlider(value=R, min=1e-6, max=1e3, step=0.1, description='ribosome concentration (nM)', layout=Layout(width='900px'), style=style, readout_format='.6f'), 
-            N_m=FloatSlider(value=N_m, min=0.0, max=10000, step=1, description='mRNA Length (Nucleotides)', layout=Layout(width='900px'), style=style, readout_format='.6f'), ## We know for sure the number of nucleotides (this is based on the DNA design)
+            N_m=FloatSlider(value=N_m, min=0.0, max=10000, step=1, description='mRNA Length (Nucleotides)', layout=Layout(width='900px'), style=style, readout_format='.6f'),
             k_deg=FloatSlider(value=k_deg, min=0.0, max=100, step=0.1, description='protein degradation rate constant (1/s)', layout=Layout(width='900px'), style=style, readout_format='.6f'), 
             X_p=FloatSlider(value=X_p, min=0.0, max=500, step=0.1, description='protease concentration (nM)', layout=Layout(width='900px'), style=style, readout_format='.6f'), 
             K_p=FloatSlider(value=K_p, min=1e-6, max=100, step=0.01, description='Michaelis-Menten constant for degradation (nM)', layout=Layout(width='900px'), style=style, readout_format='.6f'),
@@ -514,7 +554,7 @@ def visualizeModel(optimizedParameters, N_p, N_m, D):
 
 # *** Wrapper function 
 def runFullAnalysis(paths, calibration_curve_paths, time_interval, droplet_volume, mw_kda, N_p, N_m, D, initial_guesses, experiment_file_name, theory_file_name):
-    global optimizedParameters, timeValues_List, meanIntensity_List, proteinConcentration_List, proteinConcentration_nM_List, numberOfProteinMolecules_List, rateOfChangeProteinMolecules_List
+    global optimizedParameters
 
     # Part 1
     calculateMeanIntensity(paths)
@@ -526,7 +566,7 @@ def runFullAnalysis(paths, calibration_curve_paths, time_interval, droplet_volum
 
     # Part 2
 
-    # This is to generate and show a "demo" optimized model. It directly uses the initial guesses provided (without generating random initial guesses!!)
+    # Generates and shows a "demo" optimized model. This directly uses the initial guesses provided and does not generate random initial guesses.
     optimize_parameters(initial_guesses, N_p, N_m, D)
     showOptimizedParameters(N_p, N_m, D)
     visualizeModel(optimizedParameters, N_p, N_m, D)
@@ -536,23 +576,15 @@ def runFullAnalysis(paths, calibration_curve_paths, time_interval, droplet_volum
     showBestAndWorstModel(theory_file_name, N_p, N_m, D)
     
     
-    #Clear the contents of all the lists used. All of these lists are global variables and need to be cleared for the next protein analysis
-    optimizedParameters = np.array([]) # Empty the numpy array to prepare the analysis of the next protein experiment
-    timeValues_List.clear()
-    meanIntensity_List.clear()
-    proteinConcentration_List.clear()
-    proteinConcentration_nM_List.clear()
-    numberOfProteinMolecules_List.clear()
-    rateOfChangeProteinMolecules_List.clear()
-
-    # *** 2nd Wrapper function 
+    
+    # *** 2nd Wrapper function. Users should use this function if they already have the experimental data stored in their device.
 def runTheoreticalAnalysis(experiment_file_name, N_p, N_m, D, initial_guesses, theory_file_name):
-    global optimizedParameters, timeValues_List, proteinConcentration_nM_List
+    global optimizedParameters
 
     # Part 2
     loadExperimentalData(experiment_file_name)
 
-    # Generates and shows a "demo" optimized model. This directly uses the initial guesses provided (without generating random initial guesses!!)
+    # Generates and shows a "demo" optimized model. This directly uses the initial guesses provided and does not generate random initial guesses.
     optimize_parameters(initial_guesses, N_p, N_m, D)
     showOptimizedParameters(N_p, N_m, D)
     visualizeModel(optimizedParameters, N_p, N_m, D)
@@ -562,37 +594,46 @@ def runTheoreticalAnalysis(experiment_file_name, N_p, N_m, D, initial_guesses, t
     showBestAndWorstModel(theory_file_name, N_p, N_m, D)
     
 
-    #Clear the contents of all the lists used. All of these lists are global variables and need to be cleared for the next protein analysis
+def reset():
+
+    """Clear the contents of all the lists and other variables used. All of these variables are global and need to be cleared 
+    for the next protein analysis """
     optimizedParameters = np.array([]) # Empty the numpy array to prepare the analysis of the next protein experiment
     timeValues_List.clear()
-    proteinConcentration_nM_List.clear()
+    meanIntensity_List.clear()
+    proteinConcentration_List.clear()
+    #proteinConcentration_nM_List.clear()
+    numberOfProteinMolecules_List.clear()
+    rateOfChangeProteinMolecules_List.clear()
 
  
 # Part 4
 
 def showExperimentalDataTogether():
 
-    experimentalFiles = sorted(glob.glob("experimentalData_*"))
-    motorProteins_Names = [file.replace("experimentalData_", "").replace(".csv", "") for file in experimentalFiles]
+    experimentalFiles = sorted(glob.glob("experimentalData_*")) # Create a list that contains the names of all the files that store the experimental data
+    motorProteins_Names = [file.replace("experimentalData_", "").replace(".csv", "") for file in experimentalFiles] # Create a list that contains the names of all the motor proteins
 
     plt.figure(figsize=(10, 6)) # Preparation for plotting
     for i in experimentalFiles:
-        dataFrame_Protein = pd.read_csv(i) # Save into a Pandas dataframe ALL the data for the current protein
-        plt.plot(dataFrame_Protein['Time (min)'], dataFrame_Protein['Mean Intensity (A.U.)'], marker='o') # Plot the "Mean Intensity" data only
+        dataFrame_Protein = pd.read_csv(i, encoding='latin1') # Save into a Pandas DataFrame ALL the data of each motor protein
+        plt.plot(dataFrame_Protein['Time (min)'], dataFrame_Protein['Mean Intensity (A.U.)'], marker='o') # Plot the "Mean Intensity" data and "Time (min)" data of each motor protein
     
     plt.title('Mean Intensity vs Time')
     plt.xlabel('Time (min)')
     plt.ylabel('Mean Intensity (A.U.)')
     plt.grid(True)
-    plt.legend(motorProteins_Names)
-    plt.savefig("Mean_Intensity.png")
-    plt.show() # At the end of the loop, call the .show() function to combine all the plots created inside the for loop
+    plt.legend(motorProteins_Names) # Include a legend to the graph, in order to show the names of all the motor proteins 
+    plt.savefig("Mean_Intensity.png") # Save the graph as a .png image
+    plt.show() # Call the .show() function OUTSIDE of the loop to combine all the plots created inside the for loop
 
-    """
-    plt.figure(figsize=(10, 6)) # Preparation for plotting
+    
+    # ------------------ Repeat the same process described before, to show the rest of the experimental data in individual graphs ------------------
+    
+    plt.figure(figsize=(10, 6))
     for i in experimentalFiles:
-        dataFrame_Protein = pd.read_csv(i) # Save into a Pandas dataframe ALL the data for the current protein
-        plt.plot(dataFrame_Protein['Time (min)'], dataFrame_Protein['Protein Concentration (ng per µL)'], marker='o') # Plot the "Protein Concentration" data only
+        dataFrame_Protein = pd.read_csv(i, encoding='latin1') 
+        plt.plot(dataFrame_Protein['Time (min)'], dataFrame_Protein['Protein Concentration (nanograms per microliter)'], marker='o') 
     
     plt.title('Protein Concentration vs Time')
     plt.xlabel('Time (min)')
@@ -600,12 +641,13 @@ def showExperimentalDataTogether():
     plt.grid(True)
     plt.legend(motorProteins_Names)
     plt.savefig("Protein_Concentration.png")
-    plt.show() # At the end of the loop, call the .show() function to combine all the plots created inside the for loop
-    """
-    plt.figure(figsize=(10, 6)) # Preparation for plotting
+    plt.show()
+    
+    
+    plt.figure(figsize=(10, 6))
     for i in experimentalFiles:
-        dataFrame_Protein = pd.read_csv(i) # Save into a Pandas dataframe ALL the data for the current protein
-        plt.plot(dataFrame_Protein['Time (min)'], dataFrame_Protein['Protein Concentration (nM)'], marker='o') # Plot the "Number of Protein Molecules" data only
+        dataFrame_Protein = pd.read_csv(i, encoding='latin1') 
+        plt.plot(dataFrame_Protein['Time (min)'], dataFrame_Protein['Protein Concentration (nM)'], marker='o') 
 
     plt.title('Protein Concentration (nM) vs Time')
     plt.xlabel('Time (min)')
@@ -613,12 +655,12 @@ def showExperimentalDataTogether():
     plt.grid(True)
     plt.legend(motorProteins_Names)  
     plt.savefig("Protein_Concentration_(nM).png")
-    plt.show() # At the end of the loop, call the .show() function to combine all the plots created inside the for loop
+    plt.show() 
 
-    plt.figure(figsize=(10, 6)) # Preparation for plotting
+    plt.figure(figsize=(10, 6)) 
     for i in experimentalFiles:
-        dataFrame_Protein = pd.read_csv(i) # Save into a Pandas dataframe ALL the data for the current protein
-        plt.plot(dataFrame_Protein['Time (min)'], dataFrame_Protein['Number of Protein Molecules'], marker='o') # Plot the "Number of Protein Molecules" data only
+        dataFrame_Protein = pd.read_csv(i, encoding='latin1') 
+        plt.plot(dataFrame_Protein['Time (min)'], dataFrame_Protein['Number of Protein Molecules'], marker='o') 
 
     plt.title('Number of Protein Molecules vs Time')
     plt.xlabel('Time (min)')
@@ -626,39 +668,60 @@ def showExperimentalDataTogether():
     plt.grid(True)
     plt.legend(motorProteins_Names)  
     plt.savefig("Number_of_Protein_Molecules.png")
-    plt.show() # At the end of the loop, call the .show() function to combine all the plots created inside the for loop
+    plt.show() 
 
-    plt.figure(figsize=(10, 6)) # Preparation for plotting
     for i in experimentalFiles:
-        dataFrame_Protein = pd.read_csv(i) # Save into a Pandas dataframe ALL the data for the current protein
-        plt.plot(dataFrame_Protein['Time (min)'], dataFrame_Protein['Rate of Change of Number of Protein Molecules (PM per min)'], marker='o') # Plot the "Rate of Change of Protein Molecules" data only
+        dataFrame_Protein = pd.read_csv(i, encoding='latin1') 
+        counter = 0
+        if i == "experimentalData_kif3.csv": # Show the graph of the rate of change only for kif3. 
+            plt.figure(figsize=(10, 6))
+            plt.plot(dataFrame_Protein['Time (min)'], dataFrame_Protein['Rate of Change of Number of Protein Molecules (PM per min)'], marker='o', label="kif3") 
+            plt.title('kif3: Rate of Change of Protein Molecules vs Time')
+            plt.xlabel('Time (min)')
+            plt.ylabel('Rate of Change of Protein Molecules (PM per min)')
+            plt.grid(True)
+            plt.legend()
+            plt.savefig("kif3_Rate_of_Change_of_Protein_Molecules.png")
+            plt.show()
+            break
+
+    plt.figure(figsize=(10, 6))
+    for i in experimentalFiles:
+        dataFrame_Protein = pd.read_csv(i, encoding='latin1') 
+
+        if i != "experimentalData_kif3.csv": # Show the graph of the rate of change for the rest of the motor proteins.  
+            plt.plot(dataFrame_Protein['Time (min)'], dataFrame_Protein['Rate of Change of Number of Protein Molecules (PM per min)'], marker='o') 
+
+    motorProteins_Names_Without_kif3 = motorProteins_Names
+    motorProteins_Names_Without_kif3.remove("kif3") 
 
     plt.title('Rate of Change of Protein Molecules vs Time')
     plt.xlabel('Time (min)')
     plt.ylabel('Rate of Change of Protein Molecules (PM per min)')
     plt.grid(True)
-    plt.legend(motorProteins_Names)
+    plt.legend(motorProteins_Names_Without_kif3) # Ensure that the legend of the graph does not contain "kif3"
     plt.savefig("Rate_of_Change_of_Protein_Molecules.png")
-    plt.show() # At the end of the loop, call the .show() function to combine all the plots created inside the for loop
-
+    plt.show() 
 
 # Part 5
 
 def showTheoreticalDataTogether():
 
-    theoreticalFiles = glob.glob("optimizedParameters_*")
-    motorProteins_Names = [file.replace("optimizedParameters_", "").replace(".csv", "") for file in theoreticalFiles]
+    theoreticalFiles = glob.glob("optimizedParameters_*") # Create a list that contains the names of all the files that store the theoretical data
+    motorProteins_Names = [file.replace("optimizedParameters_", "").replace(".csv", "") for file in theoreticalFiles] # Create a list that contains the names of all the motor proteins
 
-    completeDataFrame = pd.DataFrame() # Initialize an empty DataFrame that will be filled in a loop
+    completeDataFrame = pd.DataFrame() # Initialize an empty DataFrame that will be filled throughout different iterations of a loop
     for i in range(len(theoreticalFiles)):
-        dataFrame_Protein = pd.read_csv(theoreticalFiles[i]) # Save into a Pandas dataframe ALL the data for the current protein
+        dataFrame_Protein = pd.read_csv(theoreticalFiles[i], encoding='latin1') # Save into a Pandas dataframe ALL the data for the current motor protein
         dataFrame_Protein = dataFrame_Protein.iloc[:, :-3] # Remove the last 3 columns of the DataFrame, which corresponds to the columns of the KNOWN PARAMETERS
-        dataFrame_Protein["Kinesin Motor Protein"] = motorProteins_Names[i]
-        completeDataFrame = pd.concat([completeDataFrame, dataFrame_Protein], ignore_index=True)
+        dataFrame_Protein["Kinesin Motor Protein"] = motorProteins_Names[i] # Important: add a column to each DataFrame that contains the name of the motor protein. 
+        completeDataFrame = pd.concat([completeDataFrame, dataFrame_Protein], ignore_index=True) # Condense 2 DataFrames into 1 DataFrame. 
 
     # "Melt" the data. Convert the DataFrame from wide format to long format.
-    """With the "long" format, the DataFrame has 3 columns. One for the kinesin motor proteins, 
+    """ With the "long" format, the DataFrame has 3 columns. One for the names of the kinesin motor proteins, 
     another one for the names of the parameters, and the third column is for the values of the parameters.
+    'var_name' corresponds to the header row of the DataFrame and of the .csv file. 'value_name' corresponds
+    to all the rows beneath the header row.
     """
     melted_data = completeDataFrame.melt(id_vars='Kinesin Motor Protein', var_name='Parameter Name', value_name='Value of Parameter')
 
@@ -666,23 +729,30 @@ def showTheoreticalDataTogether():
     plt.figure(figsize=(15, 10))
 
     SSE_Parameter = ["SSE Value"]
-    dataFrame_SSE_Values = melted_data[melted_data["Parameter Name"].isin(SSE_Parameter)]
-    sns.stripplot(x='Parameter Name', y='Value of Parameter', hue='Kinesin Motor Protein', data=dataFrame_SSE_Values, dodge=True, jitter=True, alpha=0.7)
+    dataFrame_SSE_Values = melted_data[melted_data["Parameter Name"].isin(SSE_Parameter)] # Make a DataFrame that only contains the SSE values of the optimized models
+
+    """ Use the previously created DataFrame as the data that the categorical plot will show.
+        Also, include the 'hue' option so that the kinesin motor proteins can be distinguished from one another. """
+    sns.stripplot(x='Parameter Name', y='Value of Parameter', hue='Kinesin Motor Protein', data=dataFrame_SSE_Values, dodge=True, jitter=True, alpha=0.7) 
+    plt.ylim(0,4e6)
     plt.title('SSE Values of the Different Optimized Models That Were Generated')
-    plt.xticks(rotation=90)
+    plt.xticks(rotation=90) # In the categorical plot, totate by 90 degrees the names of all the parameters
+    plt.savefig("SSE_Values_Of_Optimized_Models.png")
     plt.show()
 
-    # Create a categorical plot to show the parameters with the smaller values
-    plt.figure(figsize=(15, 10))
+    # Create a categorical plot to show the parameters that have small values. Repeat the same process described before.
+    plt.figure(figsize=(23, 12))
 
     small_parameters = ["k_TL", "k_TX", "R_p", "K_TL", "k_deg", "X_p", "K_p", "tau_0"]
     dataFrame_small = melted_data[melted_data["Parameter Name"].isin(small_parameters)]
     sns.stripplot(x='Parameter Name', y='Value of Parameter', hue='Kinesin Motor Protein', data=dataFrame_small, dodge=True, jitter=True, alpha=0.7)
+    plt.ylim(0,150)
     plt.title('Parameter Values for the Kinesin Motor Proteins')
     plt.xticks(rotation=90)
+    plt.savefig("Values_Of_The_Smallest_Parameters.png")
     plt.show()
     
-    # Create a categorical plot to show the parameters with the larger values
+    # Create a categorical plot to show the parameters that have large values. Repeat the same process described before.
     plt.figure(figsize=(15, 10))
 
     large_parameters = ["R", "tau_m", "tau_f"]
@@ -690,6 +760,7 @@ def showTheoreticalDataTogether():
     sns.stripplot(x='Parameter Name', y='Value of Parameter', hue='Kinesin Motor Protein', data=dataFrame_large, dodge=True, jitter=True, alpha=0.7)
     plt.xticks(rotation=90)
     plt.title('Parameter Values for the Kinesin Motor Proteins')
+    plt.savefig("Values_Of_The_Largest_Parameters.png")
     plt.show()
     
     

@@ -1,4 +1,4 @@
-index,Mean Intensity (A.U.),Time (s),Time (min),Time (h),Protein Concentration (ng per µL),Protein Concentration (nM),Protein Mass (ug),Number of Protein Molecules,Rate of Change of Number of Protein Molecules (PM per min)
+index,Mean Intensity (A.U.),Time (s),Time (min),Time (h),Protein Concentration (nanograms per microliter),Protein Concentration (nM),Protein Mass (ug),Number of Protein Molecules,Rate of Change of Number of Protein Molecules (PM per min)
 1,0.9368910789489750,180,3.0,0.05,0.03418024129633810,0.4272530162042220,0.06836048259267620,512703619.44507200,-35223060.115856800
 2,0.7645697593688970,360,6.0,0.1,0.027893508061181300,0.34866885076476000,0.05578701612236260,418402620.91771900,-24377773.449339400
 3,0.7015447616577150,540,9.0,0.15,0.025594191013690500,0.3199273876711290,0.051188382027381100,383912865.205358,-12440420.799266800
