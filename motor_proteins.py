@@ -474,6 +474,47 @@ def showBestAndWorstModel(theory_file_name, N_p, N_m, D):
     print("tau_0:", minSSE_row_with_optimized_parameters.iloc[9])
     print("tau_f:", minSSE_row_with_optimized_parameters.iloc[10])
 
+def compareTwoMotorProteins():
+
+    motorProtein1 = input("Enter the name of the 1st motor protein to be used in the comparison")
+    motorProtein2 = input("Enter the name of the 2nd motor protein to be used in the comparison")
+
+    theory_file_name_1 = "optimizedParameters_" + motorProtein1 + ".csv"
+    theory_file_name_k401 = "optimizedParameters_" + motorProtein2 + ".csv"
+
+    theory_df_1= pd.read_csv(theory_file_name_1) # Load the optimized parameters, known parameters, and SSE values of each of the 100 theoretical models
+    minSSE_Value_1 = theory_df_1["SSE Value"].min() # Find the least SSE value out of the 100 SSE values
+
+    index_minSSE_1 = theory_df_1[theory_df_1["SSE Value"] == minSSE_Value_1].index[0] # Find the theoretical model (which corresponds to a certain row of the .csv file) that had the least SSE value
+
+    minSSE_row_1 = theory_df_1.loc[index_minSSE_1] # Complete row where the desired SSE value belongs to 
+    minSSE_row_without_SSE_1 = minSSE_row_1[minSSE_row_1 != minSSE_Value_1] # Extract the other values found in the same row (NOT including the SSE value)
+    minSSE_row_with_optimized_parameters_1 = minSSE_row_without_SSE_1[:-3] # Only extract the optimized parameters (the known parameters are being ignored)
+
+    theory_df_2 = pd.read_csv(theory_file_name_k401) # Load the optimized parameters, known parameters, and SSE values of each of the 100 theoretical models
+    minSSE_Value_2 = theory_df_2["SSE Value"].min() # Find the least SSE value out of the 100 SSE values
+
+    index_minSSE_2 = theory_df_2[theory_df_2["SSE Value"] == minSSE_Value_2].index[0] # Find the theoretical model (which corresponds to a certain row of the .csv file) that had the least SSE value
+
+    minSSE_row_2= theory_df_2.loc[index_minSSE_2] # Complete row where the desired SSE value belongs to 
+    minSSE_row_without_SSE_2 = minSSE_row_2[minSSE_row_2 != minSSE_Value_2] # Extract the other values found in the same row (NOT including the SSE value)
+    minSSE_row_with_optimized_parameters_2 = minSSE_row_without_SSE_2[:-3] # Only extract the optimized parameters (the known parameters are being ignored)
+
+    difference = np.subtract(minSSE_row_with_optimized_parameters_2, minSSE_row_with_optimized_parameters_1) # Do an element-wise substraction of 2 NumPy arrays
+    absolute_value_difference = np.abs(difference) # Get the absolute value of the all the elements of the resultant NumPy array
+    fractionalChangeVec = np.divide(absolute_value_difference, minSSE_row_with_optimized_parameters_1) # Do an element-wise divison of 2 NumPy arrays
+    percentageChangeVec = fractionalChangeVec * 100 # Multiply all the elements of the NumPy array times 100.
+    print("For the BEST found model (model with the least SSE), this is the percentage change of the optimized parameters between ", motorProtein1, " and ",  motorProtein2, ":")
+    print()
+
+    parameter_names_comparison = ["k_TL", "k_TX", "R_p", "tau_m", "K_TL", "R", "k_deg", "X_p", "K_p", "tau_0", "tau_f"]
+    
+    for param, value in zip(parameter_names_comparison, percentageChangeVec):
+        print(param + ":   " + str(value)+ "%")
+
+
+
+
 
 # Part 3
 
@@ -763,4 +804,83 @@ def showTheoreticalDataTogether():
     plt.savefig("Values_Of_The_Largest_Parameters.png")
     plt.show()
     
+
+def plotProteinConcentrationDifference():
+
+    # Usage example
+    kif3_file = 'experimentalData_kif3.csv'
+    other_files = [
+        'experimentalData_k401.csv', 
+        'experimentalData_A.csv',
+        'experimentalData_B.csv',  
+        'experimentalData_C.csv',
+        'experimentalData_D.csv',  
+        'experimentalData_E.csv', 
+        'experimentalData_F.csv',
+        'experimentalData_G.csv', 
+        'experimentalData_H.csv',  
+        'experimentalData_AcSu.csv',
+        'experimentalData_AcSu2.csv',
+        'experimentalData_BleSto.csv',
+        'experimentalData_AdPa.csv',
+        'experimentalData_HeAl.csv',
+        'experimentalData_NaGr.csv',
+        'experimentalData_TiLa.csv',
+        'experimentalData_DiPu.csv',
+    ]
+
+    colors = [
+    'b', 'g', 'r', 'c', 'm', 'y', 'k', 'sienna', 'darkorange', 'lime',
+    'deepskyblue', 'mediumvioletred', 'peru', 'gold', 'dodgerblue', 'orchid', 'turquoise'
+    ]
+
+    # Load the experimental data for KIF-3
+    data_kif3 = pd.read_csv(kif3_file, encoding='ISO-8859-1')
+    
+    # Extract relevant data for KIF-3
+    time_kif3 = data_kif3['Time (min)']
+    protein_concentration_kif3 = data_kif3['Protein Concentration (nM)']
+    
+    # Initialize a figure for plotting
+    plt.figure(figsize=(12, 6))
+    
+    # Plot the difference for each dataset
+    i = 0
+    for file in other_files:
+
+        data = pd.read_csv(file, encoding='ISO-8859-1')
+        filtered_data = data[data["Time (min)"] <= 221.0] # Extract the COMPLETE rows for which "Time (min)" <= 221.0
+        
+        # Extract relevant data
+        time_other_motor_protein = filtered_data["Time (min)"]
+        time_other_motor_protein_as_list = time_other_motor_protein.tolist() # Having a Python list makes calculations easier in the future
+        protein_concentration_data_filtered = filtered_data['Protein Concentration (nM)'] # Extract the 'Protein Concentration (nM)' column of the filtered data
+
+        protein_concentration_kif3_splitted = np.array([]) # 
+        new_time_kif3 = np.array([])
+
+        # Ensure that all the "Time (min)" values are the SAME for both motor proteins. This way, we are correctly comparing the Protein Concentration [nM] experimental data over time
+        for index in range(len(time_kif3) - 1):
+
+            if (time_kif3[index] in time_other_motor_protein_as_list): # We know that kif3 is the largest NumPy array out of the rest of the other motor proteins
+                new_time_kif3 = np.append(new_time_kif3, time_kif3[index])
+                protein_concentration_kif3_splitted = np.append(protein_concentration_kif3_splitted, protein_concentration_kif3[index])  # Ensure that both NumPy arrays have the SAME length
+
+        # Calculate the difference between KIF-3 and the current dataset up to 221.0 minutes
+        protein_concentration_diff = protein_concentration_kif3_splitted - protein_concentration_data_filtered
+        
+        # Plot the data
+        protein_label = file.split('_')[1].split('.')[0]
+        plt.plot(new_time_kif3, protein_concentration_diff, label=f'Difference (KIF-3 - {protein_label})', marker='o', color = colors[i])
+        i = i + 1
+    
+    # Customize the plot
+    plt.xlabel('Time (min)')
+    plt.ylabel('Difference in Protein Concentration [nM]')
+    plt.title('Difference in Protein Concentration [nM] Over Time (KIF-3 - Other Motor Proteins)')
+    plt.legend()
+    plt.grid(True)
+    
+    # Show the plot
+    plt.show()
     
